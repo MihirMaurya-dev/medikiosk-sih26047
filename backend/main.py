@@ -201,7 +201,15 @@ async def chat_with_patient(request: ChatRequest):
 
     except Exception as e:
         print(f"Error: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        error_msg = str(e)
+        if "429" in error_msg or "ResourceExhausted" in error_msg or "quota" in error_msg.lower():
+            # Return a graceful message that the UI will display without breaking
+            return ChatResponse(
+                doctor_response="⏳ Server is very busy right now (API rate limit). Please wait about 30 seconds and try again.",
+                is_emergency=False
+            )
+        raise HTTPException(status_code=500, detail=error_msg)
+
 
 
 # ─────────────────────────────────────────
