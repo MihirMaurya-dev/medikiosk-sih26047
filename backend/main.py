@@ -6,6 +6,7 @@ from typing import List, Optional
 import os
 import asyncio
 import google.generativeai as genai
+from openai import AsyncOpenAI
 from dotenv import load_dotenv
 import json
 import uuid
@@ -19,12 +20,21 @@ app = FastAPI(title="MediKiosk API")
 # Mount static folder
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Configure Gemini
+# Configure Gemini (Primary)
 api_key = os.getenv("GEMINI_API_KEY")
 if api_key:
     genai.configure(api_key=api_key)
-
 model = genai.GenerativeModel('gemini-3.5-flash-lite')
+
+# Configure Fallback (Groq or OpenAI)
+fallback_client = None
+fallback_model = "llama3-8b-8192" # Default Groq model
+if os.getenv("GROQ_API_KEY"):
+    fallback_client = AsyncOpenAI(api_key=os.getenv("GROQ_API_KEY"), base_url="https://api.groq.com/openai/v1")
+elif os.getenv("OPENAI_API_KEY"):
+    fallback_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    fallback_model = "gpt-4o-mini"
+
 
 # ─────────────────────────────────────────
 # Persistent session store — survives server restarts
@@ -203,7 +213,27 @@ async def chat_with_patient(request: ChatRequest):
         print(f"Error: {str(e)}")
         error_msg = str(e)
         if "429" in error_msg or "ResourceExhausted" in error_msg or "quota" in error_msg.lower():
-            # Return a graceful message that the UI will display without breaking
+            if fallback_client:
+                print("[INFO] Gemini rate limit hit. Falling back to secondary provider...")
+                try:
+                    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+                    for msg in request.history:
+                        messages.append({"role": msg.role, "content": msg.content})
+                    messages.append({"role": "user", "content": request.current_input})
+                    
+                    fb_response = await fallback_client.chat.completions.create(
+                        model=fallback_model,
+                        messages=messages,
+                        temperature=0.3
+                    )
+                    reply = fb_response.choices[0].message.content
+                    is_emergency = "[EMERGENCY_FLAG]" in reply
+                    reply = reply.replace("[EMERGENCY_FLAG]", "").strip()
+                    return ChatResponse(doctor_response=reply, is_emergency=is_emergency)
+                except Exception as fb_err:
+                    print(f"Fallback Error: {str(fb_err)}")
+                    
+            # If no fallback or fallback failed
             return ChatResponse(
                 doctor_response="⏳ Server is very busy right now (API rate limit). Please wait about 30 seconds and try again.",
                 is_emergency=False
@@ -236,7 +266,10 @@ async def scan_document(file: UploadFile = File(...)):
 
     except Exception as e:
         print(f"Error scanning document: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        error_msg = str(e)
+        if "429" in error_msg or "ResourceExhausted" in error_msg or "quota" in error_msg.lower():
+            return {"extracted_data": "⏳ OCR Server is currently busy (Rate Limit). Please wait 30 seconds and try scanning again."}
+        raise HTTPException(status_code=500, detail=error_msg)
 
 
 # ─────────────────────────────────────────
@@ -308,8 +341,22 @@ Output a raw JSON object (no markdown code blocks) with EXACTLY these keys:
 Be honest about uncertainty. If a dimension was not collected, mark confidence as "low".
 """
 
-        response = model.generate_content(prompt)
-        raw_text = response.text.strip()
+        try:
+            response = model.generate_content(prompt)
+            raw_text = response.text.strip()
+        except Exception as api_err:
+            error_msg = str(api_err)
+            if ("429" in error_msg or "ResourceExhausted" in error_msg or "quota" in error_msg.lower()) and fallback_client:
+                print("[INFO] Gemini rate limit hit for summary. Falling back to secondary provider...")
+                fb_response = await fallback_client.chat.completions.create(
+                    model=fallback_model,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.2
+                )
+                raw_text = fb_response.choices[0].message.content.strip()
+            else:
+                raise api_err
+
 
         if raw_text.startswith("```json"):
             raw_text = raw_text[7:]
