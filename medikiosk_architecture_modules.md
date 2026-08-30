@@ -20,9 +20,9 @@ The platform consists of four primary modules that take a patient from check-in 
     *   **AYUSH Mode:** Incorporate questions for *Dashavidha Pariksha* (Prakriti, Vikriti, etc.) and *Ahara-Vihara* (Diet and Lifestyle).
     *   **Red-Flag Detection:** Detect emergency keywords (e.g., "severe chest pain") and trigger alerts.
 *   **Recommended Tech Stack:**
-    *   **Frontend:** React.js / Next.js (with Web Audio API for recording).
+    *   **Frontend:** HTML5, Vanilla JS (Lightweight Kiosk).
     *   **Backend:** Python (FastAPI).
-    *   **AI/ML:** Bhashini / AI4Bharat APIs (for ASR/TTS in Indian languages), OpenAI GPT-4o / Llama 3 (for conversation logic).
+    *   **AI/ML:** Web Speech API (for ASR/TTS), Groq Llama-3 (for lightning-fast conversation logic), Google Gemini 3.5 Flash (for Text generation fallback).
 
 ---
 
@@ -31,13 +31,12 @@ The platform consists of four primary modules that take a patient from check-in 
 
 *   **Responsibilities:**
     *   Provide a UI to capture images of prior prescriptions, lab reports, and discharge summaries.
-    *   Perform Optical Character Recognition (OCR) on both printed and handwritten documents.
+    *   Perform Optical Character Recognition (OCR) on both printed and handwritten documents using Multimodal LLMs.
     *   Extract specific medical entities: Diagnoses, Medications, Dosages, Lab test names, and values.
-    *   Flag abnormal lab values (e.g., high blood sugar).
-    *   Chronologically organize the extracted data.
+    *   Chronologically organize the extracted data and supply it to the Doctor Dashboard and Chat Engine.
 *   **Recommended Tech Stack:**
-    *   **OCR Engine:** Google Cloud Vision API, AWS Textract, or Azure AI Document Intelligence (best for handwritten medical notes).
-    *   **Entity Extraction:** LangChain + LLM (to parse raw OCR text into JSON objects).
+    *   **OCR Engine:** Google Gemini 3.5 Flash (Multimodal capabilities).
+    *   **Entity Extraction:** Direct JSON extraction via Prompt Engineering.
 
 ---
 

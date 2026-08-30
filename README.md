@@ -43,13 +43,17 @@ Install all the required Python packages:
 pip install -r requirements.txt
 ```
 
-### Step 4: Configure API Key
+### Step 4: Configure API Keys
 Create a `.env` file inside the `backend` folder. You can do this manually or via terminal.
 
-Inside `.env`, add your Gemini API key:
+For the new **Multi-Provider Fallback Architecture** (which prevents the Kiosk from crashing if Google Gemini rate limits are hit), we use **Groq** for ultra-fast text generation and **Gemini** for Multimodal OCR.
+
+Inside `.env`, add your keys:
 ```ini
-GEMINI_API_KEY=your_actual_api_key_here
+GEMINI_API_KEY=your_gemini_api_key_here
+GROQ_API_KEY=your_groq_api_key_here
 ```
+*(Note: If you only have Gemini, the system will still work but might hit the 15 RPM free tier limit during heavy testing. Groq is highly recommended for the text engine.)*
 
 ### Step 5: Start the Server
 Run the FastAPI application using Uvicorn:
@@ -68,6 +72,7 @@ Once the server is running, the app is fully accessible via your browser.
    Open your browser and go to: `http://127.0.0.1:8000/`
    - Enter a 14-digit ABHA ID (e.g., `12345678901234`) and check the consent box.
    - Start chatting (type or speak via mic).
+   - *Test Document Scan:* Click the "Scan Document" button to upload a mock medical PDF or image. The OCR will parse it and inject it into the AI's context.
    - *Test AYUSH mode:* Say "I want ayurveda consultation" to trigger the Dashavidha Pariksha.
    - *Test Emergency mode:* Say "I have severe chest pain and breathlessness" to see the red flag triage.
    - Click "Finish & Send to Doctor" to generate the summary.
@@ -75,9 +80,13 @@ Once the server is running, the app is fully accessible via your browser.
 2. **Doctor Interface (The Dashboard):**
    Open a *second tab* and go to: `http://127.0.0.1:8000/doctor-panel`
    - View the patient in the queue.
-   - Click "View Details" to see the generated SOAP note and Confidence Flags.
-   - Click "Approve". 
-   - Notice how the patient's status tab instantly updates to ✅ green without refreshing (powered by Server-Sent Events).
+   - Click the **"View Analysis"** button to open the detailed patient modal.
+   - View the generated structured clinical summary (S-O-A-P) and any raw OCR text from uploaded documents.
+   - Click "Approve Patient". 
+   - Notice how the patient's status tab instantly updates to ✅ green without refreshing.
+
+3. **Closing the Session:**
+   - On the patient status screen, click **"✖ Close Case & Exit Kiosk"** to clear the local storage and reset the kiosk for the next patient.
 
 ---
 

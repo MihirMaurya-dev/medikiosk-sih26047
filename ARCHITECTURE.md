@@ -35,7 +35,9 @@ Instead of a standard form-filling app, MediKiosk is designed as an **autonomous
 * **Frontend UI:** HTML5, Vanilla JS, TailwindCSS (Lightweight, no-build setup for fast kiosk execution).
 * **Voice Engine:** Browser Web Speech API (STT/TTS) for native Hindi and English recognition without API overhead.
 * **Backend:** Python + FastAPI + Uvicorn (Asynchronous, high-concurrency handling).
-* **AI Engine:** Google Gemini 3.6 Flash (Provides high context window, ultra-fast generation, and multimodal OCR capabilities).
+* **AI Engine (Multi-Provider Architecture):** 
+  * **Groq (Llama 3):** Primary engine for conversational AI and text summarization due to its ultra-fast LPU inference speed and robust free tier.
+  * **Google Gemini (3.5 Flash):** Acts as the primary Multimodal engine for Document OCR (reading physical reports) and as an automated fallback for the text engine in case of rate limits.
 * **Real-time Comms:** Server-Sent Events (SSE) via `StreamingResponse`.
 * **Data Persistence:** Local JSON File-backed in-memory store (Simulating a NoSQL document store).
 
@@ -58,22 +60,24 @@ graph TD
 
     subgraph FastAPI Backend
         C -->|POST /api/chat| D[Dialogue Manager]
-        P -->|POST /api/scan| V[Vision Processing]
-        D <-->|Context & Instructions| E((Gemini 3.6 Flash LLM))
-        V <--> E
+        P -->|POST /api/scan_document| V[Vision Processing]
+        D <-->|Text Inference| E((Groq / Llama-3))
+        V <-->|Multimodal OCR| F((Gemini 3.5 Flash))
+        E -.->|Rate Limit Fallback| F
     end
 
     subgraph LLM Routing Logic
-        E -->|Standard Case| F[SOCRATES Framework]
-        E -->|AYUSH Case| G[Dashavidha Pariksha]
-        E -->|Emergency| H[🚨 Red Flag Alert]
+        E -->|Standard Case| G[SOCRATES Framework]
+        E -->|AYUSH Case| H[Dashavidha Pariksha]
+        E -->|Emergency| I[🚨 Red Flag Alert]
     end
 
     subgraph Doctor Terminal
-        F & G -->|Summarize| I[SOAP / Dashavidha Note]
-        I -->|Store| J[(Queue Database)]
-        J -->|Server-Sent Events| K[Doctor Dashboard]
-        K -->|Approve & Push| L((ABDM / ABHA EMR))
+        G & H -->|Summarize| J[SOAP / Dashavidha Note]
+        F -->|Extract OCR| J
+        J -->|Store| K[(Queue Database)]
+        K -->|Server-Sent Events| L[Doctor Dashboard]
+        L -->|Approve & Push| M((ABDM / ABHA EMR))
     end
 ```
 
