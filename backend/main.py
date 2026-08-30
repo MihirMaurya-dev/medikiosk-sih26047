@@ -182,27 +182,44 @@ IMPORTANT: In AYUSH mode, the department to route to is "Ayurveda (AYUSH)".
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat_with_patient(request: ChatRequest):
     try:
-        if not api_key or api_key == "your_api_key_here":
+        if not api_key and not fallback_client:
             is_mock_emergency = "pain" in request.current_input.lower() and "severe" in request.current_input.lower()
             return ChatResponse(
                 doctor_response="[MOCK] I understand. Could you tell me exactly when this started?",
                 is_emergency=is_mock_emergency
             )
 
-        gemini_history = []
-        for msg in request.history:
-            role = "model" if msg.role == "assistant" else "user"
-            gemini_history.append({"role": role, "parts": [msg.content]})
-
-        chat = model.start_chat(history=gemini_history)
-
-        if not request.history:
-            full_input = f"System Instruction: {SYSTEM_PROMPT}\n\nPatient: {request.current_input}"
-        else:
-            full_input = request.current_input
-
-        response = chat.send_message(full_input)
-        reply = response.text
+        reply = ""
+        # ── Primary: Groq (for fast text) ──
+        if fallback_client:
+            try:
+                messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+                for msg in request.history:
+                    messages.append({"role": msg.role, "content": msg.content})
+                messages.append({"role": "user", "content": request.current_input})
+                
+                fb_response = await fallback_client.chat.completions.create(
+                    model=fallback_model,
+                    messages=messages,
+                    temperature=0.3
+                )
+                reply = fb_response.choices[0].message.content
+            except Exception as e:
+                print(f"[WARN] Groq failed, falling back to Gemini: {e}")
+                fallback_client = None # Force Gemini fallback below
+        
+        # ── Fallback: Gemini (if Groq fails or not configured) ──
+        if not fallback_client:
+            gemini_history = []
+            for msg in request.history:
+                role = "model" if msg.role == "assistant" else "user"
+                gemini_history.append({"role": role, "parts": [msg.content]})
+            
+            chat = model.start_chat(history=gemini_history)
+            full_input = f"System Instruction: {SYSTEM_PROMPT}\n\nPatient: {request.current_input}" if not request.history else request.current_input
+            
+            response = chat.send_message(full_input)
+            reply = response.text
 
         is_emergency = "[EMERGENCY_FLAG]" in reply
         reply = reply.replace("[EMERGENCY_FLAG]", "").strip()
@@ -213,27 +230,6 @@ async def chat_with_patient(request: ChatRequest):
         print(f"Error: {str(e)}")
         error_msg = str(e)
         if "429" in error_msg or "ResourceExhausted" in error_msg or "quota" in error_msg.lower():
-            if fallback_client:
-                print("[INFO] Gemini rate limit hit. Falling back to secondary provider...")
-                try:
-                    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-                    for msg in request.history:
-                        messages.append({"role": msg.role, "content": msg.content})
-                    messages.append({"role": "user", "content": request.current_input})
-                    
-                    fb_response = await fallback_client.chat.completions.create(
-                        model=fallback_model,
-                        messages=messages,
-                        temperature=0.3
-                    )
-                    reply = fb_response.choices[0].message.content
-                    is_emergency = "[EMERGENCY_FLAG]" in reply
-                    reply = reply.replace("[EMERGENCY_FLAG]", "").strip()
-                    return ChatResponse(doctor_response=reply, is_emergency=is_emergency)
-                except Exception as fb_err:
-                    print(f"Fallback Error: {str(fb_err)}")
-                    
-            # If no fallback or fallback failed
             return ChatResponse(
                 doctor_response="⏳ Server is very busy right now (API rate limit). Please wait about 30 seconds and try again.",
                 is_emergency=False
@@ -341,20 +337,26 @@ Output a raw JSON object (no markdown code blocks) with EXACTLY these keys:
 Be honest about uncertainty. If a dimension was not collected, mark confidence as "low".
 """
 
-        try:
-            response = model.generate_content(prompt)
-            raw_text = response.text.strip()
-        except Exception as api_err:
-            error_msg = str(api_err)
-            if ("429" in error_msg or "ResourceExhausted" in error_msg or "quota" in error_msg.lower()) and fallback_client:
-                print("[INFO] Gemini rate limit hit for summary. Falling back to secondary provider...")
+        raw_text = ""
+        if fallback_client:
+            try:
                 fb_response = await fallback_client.chat.completions.create(
                     model=fallback_model,
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.2
                 )
                 raw_text = fb_response.choices[0].message.content.strip()
-            else:
+            except Exception as e:
+                print(f"[WARN] Groq summary failed, falling back to Gemini: {e}")
+                
+        if not raw_text:
+            try:
+                response = model.generate_content(prompt)
+                raw_text = response.text.strip()
+            except Exception as api_err:
+                error_msg = str(api_err)
+                if ("429" in error_msg or "ResourceExhausted" in error_msg or "quota" in error_msg.lower()) and fallback_client:
+                    raise HTTPException(status_code=500, detail="⏳ Both Groq and Gemini failed/busy. Please try again.")
                 raise api_err
 
 
