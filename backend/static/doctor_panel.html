@@ -199,21 +199,39 @@ function openModal(patient) {
         <div><span class="text-xs text-slate-500 uppercase font-bold tracking-wider">Status</span><p class="text-lg font-bold ${patient.status === 'Approved' ? 'text-green-600' : 'text-indigo-600'}">${patient.status}</p></div>
     `;
     
-    let html = marked.parse(patient.summary_markdown || '_No summary available._');
+    let html = `<div><h3 class="font-bold text-slate-700 mb-2">Quick Overview</h3><div class="text-slate-600">${marked.parse(patient.summary_markdown || '_No summary available._')}</div></div>`;
     
+    // Add Structured SOAP Summary
+    if (patient.soap) {
+        const isAYUSH = (patient.department || '').toLowerCase().includes('ayush');
+        html += `<div class="mt-5 bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+            <div class="bg-slate-100 px-4 py-2 font-bold text-slate-700 border-b border-slate-200 text-sm tracking-wide uppercase flex items-center space-x-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+                <span>Structured Clinical Summary</span>
+            </div>
+            <div class="p-4 space-y-4 text-sm leading-relaxed">
+                <div class="flex gap-3"><div class="w-6 font-black text-blue-600 shrink-0">S</div><div class="flex-1"><strong class="text-slate-500 text-xs uppercase block mb-0.5">${isAYUSH ? 'Prakriti + Vikriti' : 'Subjective'}</strong><span class="text-slate-800">${patient.soap.S || 'N/A'}</span></div></div>
+                <div class="flex gap-3"><div class="w-6 font-black text-purple-600 shrink-0">O</div><div class="flex-1"><strong class="text-slate-500 text-xs uppercase block mb-0.5">${isAYUSH ? 'Dashavidha Pariksha' : 'Objective'}</strong><span class="text-slate-800">${patient.soap.O || 'N/A'}</span></div></div>
+                <div class="flex gap-3"><div class="w-6 font-black text-amber-600 shrink-0">A</div><div class="flex-1"><strong class="text-slate-500 text-xs uppercase block mb-0.5">${isAYUSH ? 'Dosha Assessment' : 'Assessment'}</strong><span class="text-slate-800">${patient.soap.A || 'N/A'}</span></div></div>
+                <div class="flex gap-3"><div class="w-6 font-black text-green-600 shrink-0">P</div><div class="flex-1"><strong class="text-slate-500 text-xs uppercase block mb-0.5">${isAYUSH ? 'Vaidya Plan' : 'Plan'}</strong><span class="text-slate-800">${patient.soap.P || 'N/A'}</span></div></div>
+            </div>
+        </div>`;
+    }
+
     // Append reports if any
     if (patient.reports && patient.reports.length > 0) {
         html += `<div class="mt-6 border-t border-slate-200 pt-5">
-            <h3 class="font-bold text-indigo-700 flex items-center space-x-2">
+            <h3 class="font-bold text-indigo-700 flex items-center space-x-2 mb-3">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                 <span>Scanned Documents / Reports</span>
             </h3>
-            <div class="mt-3 space-y-3">`;
+            <div class="space-y-3">`;
         patient.reports.forEach((reportText, idx) => {
-            html += `<div class="bg-slate-50 border border-slate-200 rounded-lg p-4 text-sm text-slate-800 font-mono whitespace-pre-wrap"><strong>Document ${idx + 1}</strong>\n${reportText}</div>`;
+            html += `<div class="bg-indigo-50 border border-indigo-100 rounded-lg p-4 text-sm text-slate-800 font-mono whitespace-pre-wrap"><strong class="text-indigo-800 block mb-1">Document ${idx + 1}</strong>${reportText}</div>`;
         });
         html += `</div></div>`;
     }
+    
     document.getElementById('modal-summary').innerHTML = html;
     
     const actions = document.getElementById('modal-actions');
