@@ -68,7 +68,10 @@
                     <span class="text-indigo-600 font-semibold text-sm uppercase tracking-wide">Queue Number</span>
                     <span id="p-queue" class="font-black text-indigo-800 text-2xl"></span>
                 </div>
-                <p class="text-slate-400 text-xs text-center">This page refreshes automatically every 10 seconds.</p>
+                <p class="text-slate-400 text-xs text-center mt-2">This page refreshes automatically every 10 seconds.</p>
+                <button onclick="localStorage.clear(); window.location.href='/'" class="w-full bg-red-100 hover:bg-red-200 text-red-700 font-bold py-2.5 rounded-xl transition-colors mt-4 text-sm">
+                    ✖ Close Case & Exit Kiosk
+                </button>
             </div>
         </div>
 
@@ -99,8 +102,8 @@
                 <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
                     <strong>📋 Instructions:</strong> Please carry this token number when you go to the <strong id="a-dept2"></strong> department. Show your ABHA ID to the nurse at the counter.
                 </div>
-                <button onclick="window.location.href='/'" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-xl transition-colors mt-2">
-                    Start New Session
+                <button onclick="localStorage.clear(); window.location.href='/'" class="w-full bg-red-100 hover:bg-red-200 text-red-700 font-bold py-3 rounded-xl transition-colors mt-2">
+                    ✖ Close Case & Exit Kiosk
                 </button>
             </div>
         </div>
