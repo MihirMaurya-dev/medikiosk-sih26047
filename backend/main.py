@@ -293,11 +293,15 @@ async def generate_summary(request: SummaryRequest):
             return token_data
 
         transcript = ""
+        report_analysis = []
         for msg in request.history:
-            if not msg.content.startswith("[SYSTEM NOTE"):
+            if msg.content.startswith("[SYSTEM NOTE: The patient uploaded a medical document"):
+                transcript += f"SYSTEM (DOCUMENT OCR): {msg.content}\n"
+                report_analysis.append(msg.content.replace("[SYSTEM NOTE: The patient uploaded a medical document. Extracted details: ", "").rstrip("]"))
+            elif not msg.content.startswith("[SYSTEM NOTE"):
                 transcript += f"{msg.role.upper()}: {msg.content}\n"
 
-        prompt = f"""You are a senior physician AI reviewing a patient intake transcript. Generate a structured clinical summary.
+        prompt = f"""You are a senior physician AI reviewing a patient intake transcript (which may include OCR'd medical documents). Generate a structured clinical summary.
 
 Transcript:
 {transcript}
@@ -388,6 +392,9 @@ Be honest about uncertainty. If a dimension was not collected, mark confidence a
             "priority": data.get("priority", "Medium"),
             "queue_number": DEPT_COUNTERS[dept],
             "summary_markdown": data.get("summary_markdown", ""),
+            "soap": data.get("soap", {}),
+            "confidence_flags": data.get("confidence_flags", []),
+            "reports": report_analysis,
             "status": "Pending",    # Pending / Approved
             "approved_by": None,
             "timestamp": datetime.now().isoformat()

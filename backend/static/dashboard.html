@@ -130,6 +130,15 @@
             </div>
         </div>
 
+        <!-- Uploaded Reports -->
+        <div class="bg-white rounded-2xl shadow-md border border-slate-200 overflow-hidden" id="reports-section" style="display: none;">
+            <div class="bg-slate-50 border-b border-slate-200 px-6 py-4 flex items-center space-x-2">
+                <svg class="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                <h2 class="font-bold text-slate-800">Scanned Documents & Reports</h2>
+            </div>
+            <div class="p-5 space-y-3" id="reports-container"></div>
+        </div>
+
         <!-- AI Confidence Flags -->
         <div class="bg-white rounded-2xl shadow-md border border-slate-200 overflow-hidden">
             <div class="bg-slate-50 border-b border-slate-200 px-6 py-4 flex items-center space-x-2">
@@ -287,6 +296,18 @@
 
             // Confidence flags
             renderConfidenceFlags(data.confidence_flags || []);
+
+            // Render Uploaded Reports
+            if (data.reports && data.reports.length > 0) {
+                document.getElementById('reports-section').style.display = 'block';
+                const rc = document.getElementById('reports-container');
+                data.reports.forEach((reportText, idx) => {
+                    const block = document.createElement('div');
+                    block.className = "bg-slate-50 border border-slate-200 rounded-lg p-4 text-sm text-slate-800 font-mono whitespace-pre-wrap";
+                    block.textContent = "Document " + (idx + 1) + ":\n" + reportText.trim();
+                    rc.appendChild(block);
+                });
+            }
 
         } catch(e) {
             document.getElementById('loading-state').classList.add('hidden');
