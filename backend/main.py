@@ -206,10 +206,10 @@ async def chat_with_patient(request: ChatRequest):
                 reply = fb_response.choices[0].message.content
             except Exception as e:
                 print(f"[WARN] Groq failed, falling back to Gemini: {e}")
-                fallback_client = None # Force Gemini fallback below
+                reply = ""
         
         # ── Fallback: Gemini (if Groq fails or not configured) ──
-        if not fallback_client:
+        if not reply:
             gemini_history = []
             for msg in request.history:
                 role = "model" if msg.role == "assistant" else "user"
