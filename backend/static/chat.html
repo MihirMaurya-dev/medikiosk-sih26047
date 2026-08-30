@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MediKiosk – Patient Intake</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        @keyframes siren { 0%,100%{background:#dc2626} 50%{background:#991b1b} }
+        @keyframes shake { 0%,100%{transform:translateX(0)} 20%,60%{transform:translateX(-6px)} 40%,80%{transform:translateX(6px)} }
+        .siren-bg { animation: siren .6s infinite; }
+        .shake { animation: shake .4s ease-in-out 3; }
+        @keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+        .msg-enter{animation:fadeUp .2s ease-out}
+        /* Markdown inside AI bubbles */
+        .ai-bubble p { margin-bottom: 0.5em; }
+        .ai-bubble p:last-child { margin-bottom: 0; }
+        .ai-bubble strong { font-weight: 700; color: #1e3a8a; }
+        .ai-bubble em { font-style: italic; color: #374151; }
+        .ai-bubble ul { list-style: disc; margin-left: 1.25em; margin-bottom: 0.5em; }
+        .ai-bubble ol { list-style: decimal; margin-left: 1.25em; margin-bottom: 0.5em; }
+        .ai-bubble li { margin-bottom: 0.2em; }
+        .ai-bubble h3 { font-size: 0.95em; font-weight: 700; margin-bottom: 0.3em; color: #1f2937; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen flex flex-col font-sans">
+
+    <!-- Official Header -->
+    <header class="bg-white border-b-4 border-orange-500 shadow-sm z-10 shrink-0">
+        <div class="max-w-4xl mx-auto px-4 py-3 flex justify-between items-center">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center">
+                    <span class="text-white font-bold text-xl">🌿</span>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold text-gray-800">Ministry of Ayush</h1>
+                    <p class="text-xs text-gray-500 font-semibold uppercase tracking-wider">AI Patient Intake Kiosk</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-3">
+                <button id="lang-toggle" class="text-xs border border-slate-300 rounded-lg px-3 py-1.5 font-bold text-slate-600 hover:bg-slate-100 transition-colors" title="Switch language">
+                    🇮🇳 हिंदी
+                </button>
+                <div class="hidden md:block text-right">
+                    <p class="text-xs text-gray-500">ABHA ID</p>
+                    <p class="text-sm font-bold font-mono text-blue-900" id="chat-abha">Loading...</p>
+                </div>
+                <button id="finish-btn" class="bg-blue-700 hover:bg-blue-800 text-white font-bold py-2.5 px-5 rounded-lg shadow transition-colors flex items-center text-sm">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                    Finish &amp; Send to Doctor
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- EMERGENCY FULL-SCREEN OVERLAY (hidden by default) -->
+    <div id="emergency-overlay" class="fixed inset-0 z-[100] hidden flex-col items-center justify-center text-white siren-bg">
+        <div class="text-center px-6 shake" id="emergency-content">
+            <div class="text-8xl mb-6">🚨</div>
+            <h1 class="text-4xl md:text-5xl font-black mb-4 tracking-wide">EMERGENCY ALERT</h1>
+            <p class="text-2xl font-bold mb-2">ALERT TRIAGE NURSE IMMEDIATELY</p>
+            <p class="text-lg text-red-200 mb-8">Patient showing critical red-flag symptoms</p>
+            <div class="bg-white/20 rounded-2xl p-6 mb-8 max-w-lg mx-auto text-left">
+                <p class="font-bold text-lg mb-2">⚠️ Do NOT continue routine intake</p>
+                <p>Escort patient directly to the triage desk or press the emergency call button.</p>
+            </div>
+            <button onclick="dismissEmergency()" class="bg-white text-red-700 font-black px-10 py-4 rounded-2xl text-lg hover:bg-red-50 transition-colors shadow-2xl">
+                ✓ Nurse Alerted — Dismiss
+            </button>
+        </div>
+    </div>
+
+    <!-- Chat wrapper — centered, accounts for fixed footer -->
+    <div class="flex-1 flex flex-col items-center w-full px-3 sm:px-4 pt-4 pb-24">
+        <div class="w-full max-w-4xl flex flex-col flex-1 bg-white shadow-xl rounded-2xl border border-gray-100 overflow-hidden">
+
+            <!-- Progress bar — sticky so it stays visible when chat scrolls -->
+            <div class="sticky top-0 z-10 bg-white px-4 pt-3 pb-2 border-b border-slate-100 shrink-0">
+                <div class="flex items-center justify-between mb-1.5">
+                    <div class="flex items-center space-x-2">
+                        <span class="text-xs text-slate-500 font-semibold uppercase tracking-wider">Interview Progress</span>
+                        <span class="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-mono" id="exchange-count">0 / 8 questions</span>
+                    </div>
+                    <span class="text-xs font-semibold" id="progress-label" style="color:#64748b">Collecting history...</span>
+                </div>
+                <div class="w-full bg-slate-100 rounded-full h-1.5">
+                    <div id="progress-bar" class="h-1.5 rounded-full transition-all duration-500" style="width:5%;background:#2563eb"></div>
+                </div>
+            </div>
+
+            <!-- Chat History -->
+            <div id="chatbox" class="flex-1 overflow-y-auto p-4 space-y-4">
+                <div class="flex msg-enter">
+                    <div class="bg-slate-100 text-gray-800 p-4 rounded-2xl rounded-tl-sm max-w-[85%] border border-slate-200 shadow-sm leading-relaxed">
+                        Namaste! 🙏 Main MediKiosk hoon — aapka digital health assistant.<br><br>
+                        Aaj aap hospital kyun aaye hain? Aap Hindi ya English mein bata sakte hain. Neeche type karein ya mic button dabayein.
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+    <!-- Footer Controls -->
+    <footer class="bg-white/90 backdrop-blur-md p-4 border-t border-gray-200 fixed bottom-0 w-full z-10">
+        <div class="max-w-4xl mx-auto flex gap-3">
+            <!-- Hidden File Input for Document Scan -->
+            <input type="file" id="file-input" accept="image/*" class="hidden">
+            <!-- Document Scan Button -->
+            <button id="scan-btn" class="bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 p-3.5 rounded-full shadow-sm flex items-center justify-center transition-all group relative" title="Upload Document">
+                <svg class="w-6 h-6 group-hover:text-blue-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            </button>
+            <!-- Voice Input Button -->
+            <button id="voice-btn" class="bg-orange-500 hover:bg-orange-600 text-white p-3.5 rounded-full shadow-md hover:shadow-lg flex items-center justify-center transition-all relative overflow-hidden" title="Voice Input">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
+            </button>
+            <div class="flex-1 relative">
+                <input type="text" id="user-input" class="w-full h-full border border-gray-300 pl-4 pr-12 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-700 bg-slate-50" placeholder="Type your symptoms here...">
+            </div>
+            <button id="send-btn" class="bg-blue-700 hover:bg-blue-800 text-white font-bold py-3 px-6 rounded-xl transition-all shadow-md hover:shadow-lg flex items-center">
+                <span class="hidden sm:inline">Send</span>
+                <svg class="w-5 h-5 sm:ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+            </button>
+        </div>
+    </footer>
+
+            <!-- Triage Token Modal (Hidden by default) -->
+    <div id="token-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 hidden z-50 flex items-center justify-center backdrop-blur-sm p-4">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 text-center relative overflow-hidden">
+            <div class="absolute top-0 left-0 w-full h-3 bg-gradient-to-r from-orange-400 via-white to-green-500"></div>
+            
+            <div id="token-loading" class="py-8">
+                <div class="w-16 h-16 border-4 border-blue-200 border-t-blue-700 rounded-full animate-spin mx-auto mb-4"></div>
+                <h3 class="text-xl font-bold text-gray-800">Generating Triage Token...</h3>
+                <p class="text-gray-500 mt-2">AI is analyzing your symptoms and finding the right doctor.</p>
+            </div>
+            
+            <div id="token-result" class="hidden">
+                <div class="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg class="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                </div>
+                <h2 class="text-2xl font-bold text-gray-800 mb-2">Token Generated</h2>
+                
+                <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 my-6 text-left space-y-3">
+                    <div class="flex justify-between items-center border-b border-slate-200 pb-2">
+                        <span class="text-gray-500 font-semibold">Department</span>
+                        <span id="token-dept" class="font-bold text-blue-700 text-lg">Orthopedics</span>
+                    </div>
+                    <div class="flex justify-between items-center border-b border-slate-200 pb-2">
+                        <span class="text-gray-500 font-semibold">Priority</span>
+                        <span id="token-priority" class="font-bold text-orange-600 text-lg">High</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-500 font-semibold">Queue Number</span>
+                        <span id="token-queue" class="font-bold text-2xl text-gray-900">#42</span>
+                    </div>
+                </div>
+                
+                <p class="text-sm text-gray-600 mb-5">Please wait in the waiting area. The doctor has received your clinical summary.</p>
+                
+                <button onclick="window.location.href='/status'" class="w-full bg-blue-700 hover:bg-blue-800 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-md mb-2">
+                    📋 Check My Status & Queue Number
+                </button>
+                <button onclick="window.location.href='/doctor-panel'" class="w-full bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-2.5 px-4 rounded-xl transition-all text-sm">
+                    🩺 Switch to Doctor Panel (Demo)
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const chatbox = document.getElementById('chatbox');
+        const userInput = document.getElementById('user-input');
+        const sendBtn = document.getElementById('send-btn');
+        const voiceBtn = document.getElementById('voice-btn');
+        const scanBtn = document.getElementById('scan-btn');
+        const fileInput = document.getElementById('file-input');
+
+        let chatHistory = [];
+        let voiceLang = 'hi-IN';  // default Hindi
+        let ttsLang = 'hi-IN';
+        let exchangeCount = 0;
+
+        // ── SOCRATES progress tracker ──
+        const SOCRATES_KEYS = ['site','onset','character','radiation','associations','time','exacerbating','severity'];
+        let socratesCollected = new Set();
+
+        function updateProgress(forceReady = false) {
+            const max = 8;
+            const bar = document.getElementById('progress-bar');
+            const label = document.getElementById('progress-label');
+            const countEl = document.getElementById('exchange-count');
+
+            if (forceReady) {
+                bar.style.width = '100%';
+                bar.style.background = '#16a34a';
+                label.textContent = '✓ Ready to submit';
+                label.style.color = '#16a34a';
+                countEl.textContent = 'History collected';
+                return;
+            }
+
+            const pct = Math.min(5 + (exchangeCount * 11), 98);
+            bar.style.width = pct + '%';
+            countEl.textContent = Math.min(exchangeCount, max) + ' / ' + max + ' questions';
+
+            // Goes green earlier if enough info collected (5+ exchanges)
+            if (exchangeCount >= 5) {
+                bar.style.background = '#16a34a';
+                label.textContent = '✓ Ready to submit';
+                label.style.color = '#16a34a';
+            } else if (exchangeCount >= 3) {
+                bar.style.background = '#d97706';
+                label.textContent = 'Halfway through...';
+                label.style.color = '#d97706';
+            } else {
+                bar.style.background = '#2563eb';
+                label.textContent = 'Collecting history...';
+                label.style.color = '#64748b';
+            }
+        }
+
+        // Called when emergency or natural wrap-up detected
+        function markReady(isEmergency = false) {
+            updateProgress(true);
+            const finishBtn = document.getElementById('finish-btn');
+            if (isEmergency) {
+                // Pulse the finish button red — urgent call to action
+                finishBtn.className = 'animate-pulse bg-red-600 hover:bg-red-700 text-white font-bold py-2.5 px-5 rounded-lg shadow transition-colors flex items-center text-sm';
+                finishBtn.innerHTML = `
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                    </svg>
+                    🚨 Send to Doctor NOW`;
+            } else {
+                // Green — ready normally
+                finishBtn.className = 'bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 px-5 rounded-lg shadow transition-colors flex items-center text-sm';
+                finishBtn.innerHTML = `
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    Send to Doctor →`;
+            }
+        }
+
+        // ── Browser TTS ──
+        function speak(text) {
+            if (!window.speechSynthesis) return;
+            window.speechSynthesis.cancel();
+            const utter = new SpeechSynthesisUtterance(text);
+            utter.lang = ttsLang;
+            utter.rate = 0.9;
+            window.speechSynthesis.speak(utter);
+        }
+
+        // ── Language toggle — also injects AI instruction ──
+        const langBtn = document.getElementById('lang-toggle');
+        langBtn.addEventListener('click', () => {
+            if (voiceLang === 'hi-IN') {
+                voiceLang = 'en-IN'; ttsLang = 'en-IN';
+                langBtn.textContent = '🇬🇧 English';
+                // Tell AI to switch to English
+                chatHistory.push({
+                    role: "user",
+                    content: "[SYSTEM NOTE: The patient has switched language preference to English. Please respond ONLY in English from now on.]"
+                });
+            } else {
+                voiceLang = 'hi-IN'; ttsLang = 'hi-IN';
+                langBtn.textContent = '🇮🇳 हिंदी';
+                // Tell AI to switch to Hindi
+                chatHistory.push({
+                    role: "user",
+                    content: "[SYSTEM NOTE: Patient ne Hindi mein baat karna prefer kiya hai. Ab se SIRF Hindi mein jawab dein. Devanagari script use karein.]"
+                });
+            }
+        });
+
+        // ── Emergency overlay ──
+        function showEmergency() {
+            const overlay = document.getElementById('emergency-overlay');
+            overlay.classList.remove('hidden');
+            overlay.classList.add('flex');
+            speak('Attention! Patient is showing emergency symptoms. Please alert the triage nurse immediately.');
+        }
+        function dismissEmergency() {
+            const overlay = document.getElementById('emergency-overlay');
+            overlay.classList.add('hidden');
+            overlay.classList.remove('flex');
+        }
+
+        // ── Load ABHA ID from session ──
+        const patientAbha = localStorage.getItem('patient_abha');
+        if (patientAbha) {
+            document.getElementById('chat-abha').innerText = patientAbha;
+            let pastHistory = "No significant past medical history.";
+            if (patientAbha.endsWith("1") || patientAbha.endsWith("3")) {
+                pastHistory = "Type 2 Diabetes Mellitus, taking Metformin 500mg. Allergic to Penicillin.";
+            } else if (patientAbha.endsWith("2") || patientAbha.endsWith("4")) {
+                pastHistory = "Hypertension (High BP), taking Amlodipine 5mg.";
+            } else if (patientAbha.endsWith("5") || patientAbha.endsWith("7")) {
+                pastHistory = "Asthma, uses Albuterol inhaler occasionally.";
+            } else {
+                pastHistory = "Previous surgery: Appendectomy (2018).";
+            }
+            chatHistory.push({
+                role: "user",
+                content: `[SYSTEM NOTE: Patient authenticated via ABDM. Retrieved Past Medical History: ${pastHistory}. Use this silently as context.]`
+            });
+        } else {
+            window.location.href = '/';
+        }
+
+        // ── Existing session check ──
+        // If patient already submitted a case, show their live status instead of blank chat
+        const existingToken = localStorage.getItem('medikiosk_token_id');
+        if (existingToken) {
+            // Disable chat input — session already submitted
+            userInput.disabled = true;
+            sendBtn.disabled = true;
+            document.getElementById('finish-btn').disabled = true;
+            document.getElementById('finish-btn').classList.add('opacity-40', 'cursor-not-allowed');
+
+            // Show a status card inside the chatbox
+            const statusCard = document.createElement('div');
+            statusCard.id = 'session-status-card';
+            statusCard.className = 'mx-auto w-full max-w-sm';
+            statusCard.innerHTML = `
+                <div class="bg-blue-50 border border-blue-200 rounded-2xl p-5 text-center">
+                    <div class="w-10 h-10 border-3 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-3" style="border-width:3px;"></div>
+                    <p class="text-blue-700 font-semibold text-sm">Checking your session status...</p>
+                    <p class="text-blue-500 text-xs mt-1 font-mono">Token: ${existingToken}</p>
+                </div>`;
+            chatbox.appendChild(statusCard);
+
+            pollExistingSession(existingToken);
+            // ── Use SSE for instant updates ──
+            const evtSource = new EventSource(`/api/stream/${existingToken}`);
+            evtSource.onmessage = (e) => {
+                const data = JSON.parse(e.data);
+                if (data.error) { evtSource.close(); return; }
+                showSessionCard(data, existingToken);
+                if (data.status === 'Approved') evtSource.close(); // stream closed server-side too
+            };
+            evtSource.onerror = () => evtSource.close();
+        }
+
+        async function pollExistingSession(tokenId) {
+            try {
+                const res = await fetch(`/api/token/${tokenId}`);
+                if (!res.ok) {
+                    showSessionCard(null, tokenId);
+                    return;
+                }
+                const data = await res.json();
+                showSessionCard(data, tokenId);
+            } catch(e) {
+                console.error('Status poll failed', e);
+            }
+        }
+
+        function showSessionCard(data, tokenId) {
+            const card = document.getElementById('session-status-card');
+            if (!card) return;
+
+            if (!data) {
+                // Token not found — allow fresh start
+                card.innerHTML = `
+                    <div class="bg-slate-50 border border-slate-200 rounded-2xl p-5 text-center">
+                        <div class="text-3xl mb-2">❓</div>
+                        <p class="font-bold text-slate-700">Previous session not found</p>
+                        <p class="text-slate-500 text-sm mt-1 mb-4">Your old token may have expired.</p>
+                        <button onclick="startNewSession()" class="w-full bg-blue-700 hover:bg-blue-800 text-white font-bold py-2.5 rounded-xl text-sm transition-colors">
+                            Start Fresh →
+                        </button>
+                    </div>`;
+                return;
+            }
+
+            const isApproved = data.status === 'Approved';
+            const isEmergency = data.priority === 'Emergency';
+
+            card.innerHTML = `
+                <div class="rounded-2xl overflow-hidden border ${isApproved ? 'border-green-300' : isEmergency ? 'border-red-400' : 'border-amber-300'} shadow-md">
+                    <!-- Coloured top strip -->
+                    <div class="h-2 w-full ${isApproved ? 'bg-green-500' : isEmergency ? 'bg-red-500' : 'bg-amber-400'}"></div>
+                    <div class="bg-white p-5 text-center">
+                        <div class="text-4xl mb-2">${isApproved ? '✅' : isEmergency ? '🚨' : '⏳'}</div>
+                        <h3 class="text-lg font-black text-slate-800 mb-1">
+                            ${isApproved ? 'You are Approved!' : isEmergency ? 'Emergency — Go to Triage' : 'Waiting for Doctor'}
+                        </h3>
+                        <p class="text-sm ${isApproved ? 'text-green-700' : 'text-slate-500'} mb-4">
+                            ${isApproved
+                                ? `Please proceed to <strong>${data.department}</strong> department.`
+                                : `Your report is with the <strong>${data.department}</strong> team. Please wait.`}
+                        </p>
+
+                        <!-- Token info grid -->
+                        <div class="grid grid-cols-3 gap-2 bg-slate-50 rounded-xl p-3 mb-4 text-left">
+                            <div>
+                                <p class="text-xs text-slate-400 font-bold uppercase tracking-wide">Token</p>
+                                <p class="font-mono font-black text-slate-800 text-sm">${data.token_id}</p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-slate-400 font-bold uppercase tracking-wide">Queue #</p>
+                                <p class="font-black text-2xl ${isApproved ? 'text-green-600' : 'text-blue-700'}">#${data.queue_number}</p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-slate-400 font-bold uppercase tracking-wide">Priority</p>
+                                <p class="font-bold text-sm ${data.priority === 'High' || data.priority === 'Emergency' ? 'text-red-600' : 'text-amber-600'}">${data.priority}</p>
+                            </div>
+                        </div>
+
+                        ${isApproved && data.approved_by ? `
+                        <div class="bg-green-50 border border-green-200 rounded-xl p-3 mb-4 text-sm text-green-800">
+                            ✓ Approved by <strong>${data.approved_by}</strong>
+                        </div>` : ''}
+
+                        <p class="text-xs text-slate-400 mb-3">Status updates automatically every 8 seconds</p>
+
+                        <button onclick="startNewSession()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-2.5 rounded-xl text-sm transition-colors">
+                            Start New Patient Session
+                        </button>
+                    </div>
+                </div>`;
+        }
+
+        function startNewSession() {
+            // Clear all stored session data
+            localStorage.removeItem('medikiosk_token_id');
+            localStorage.removeItem('medikiosk_summary');
+            localStorage.removeItem('medikiosk_history');
+            // Reload the page fresh
+            window.location.reload();
+        }
+
+        // ── addMessage: renders markdown for AI, plain text for user ──
+        function addMessage(role, text) {
+            const wrapper = document.createElement('div');
+            wrapper.className = (role === 'user' ? 'flex justify-end' : 'flex') + ' msg-enter';
+            const msg = document.createElement('div');
+
+            if (role === 'user') {
+                msg.className = 'bg-blue-600 text-white p-4 rounded-2xl rounded-tr-sm max-w-[85%] whitespace-pre-wrap shadow-sm text-sm';
+                msg.innerText = text;
+            } else if (role === 'system') {
+                msg.className = 'bg-orange-50 text-orange-900 p-3 rounded-lg max-w-[90%] border border-orange-200 text-xs whitespace-pre-wrap shadow-sm mx-auto font-mono text-center';
+                msg.innerText = text;
+            } else {
+                // AI response — render markdown
+                msg.className = 'ai-bubble bg-slate-100 text-gray-800 p-4 rounded-2xl rounded-tl-sm max-w-[85%] border border-slate-200 shadow-sm text-sm leading-relaxed';
+                msg.innerHTML = marked.parse(text);
+            }
+
+            wrapper.appendChild(msg);
+            chatbox.appendChild(wrapper);
+            chatbox.scrollTop = chatbox.scrollHeight;
+            if (role === 'assistant') speak(text.replace(/[*_#`]/g, '')); // strip markdown for TTS
+        }
+
+        function addLoadingIndicator() {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'flex';
+            wrapper.id = 'loading-indicator';
+            const msg = document.createElement('div');
+            msg.className = 'bg-slate-100 p-3 rounded-2xl rounded-tl-sm flex items-center space-x-2 border border-slate-200';
+            msg.innerHTML = `
+                <div class="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></div>
+                <div class="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style="animation-delay:0.15s"></div>
+                <div class="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style="animation-delay:0.3s"></div>
+            `;
+            wrapper.appendChild(msg);
+            chatbox.appendChild(wrapper);
+            chatbox.scrollTop = chatbox.scrollHeight;
+        }
+
+        function removeLoadingIndicator() {
+            const el = document.getElementById('loading-indicator');
+            if (el) el.remove();
+        }
+
+        async function sendMessage() {
+            const text = userInput.value.trim();
+            if (!text) return;
+
+            addMessage('user', text);
+            userInput.value = '';
+            userInput.disabled = true;
+            sendBtn.disabled = true;
+            sendBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            addLoadingIndicator();
+
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        patient_id: localStorage.getItem('patient_abha') || 'unknown',
+                        history: chatHistory,
+                        current_input: text
+                    })
+                });
+
+                const data = await response.json();
+                removeLoadingIndicator();
+
+                if (!response.ok) {
+                    addMessage('assistant', '[API Error]: ' + (data.detail || 'Unknown error.'));
+                } else {
+                    chatHistory.push({role: "user", content: text});
+                    chatHistory.push({role: "assistant", content: data.doctor_response});
+                    addMessage('assistant', data.doctor_response);
+                    exchangeCount++;
+                    updateProgress();
+
+                    // ── EMERGENCY → instant red finish button + full-screen overlay ──
+                    if (data.is_emergency) {
+                        markReady(true);   // red pulsing button
+                        showEmergency();   // full-screen siren
+                    } else {
+                        // Detect natural conversation wrap-up from AI
+                        // (AI says something like "kripya submit karein" or "send to doctor")
+                        const wrapSignals = [
+                            'submit', 'finish', 'send to doctor', 'please click',
+                            'अस्पताल जाएं', 'तुरंत जाएं', 'डॉक्टर को दिखाएं',
+                            'अपना ध्यान रखें', 'जल्दी स्वस्थ', 'ठीक हो जाएं'
+                        ];
+                        const resp = data.doctor_response.toLowerCase();
+                        const isWrapUp = wrapSignals.some(s => resp.includes(s.toLowerCase()));
+                        if (isWrapUp) markReady(false);  // green finish button
+                    }
+                }
+            } catch (error) {
+                removeLoadingIndicator();
+                addMessage('assistant', '[Error connecting to AI. Please ensure backend is running.]');
+            } finally {
+                userInput.disabled = false;
+                sendBtn.disabled = false;
+                sendBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                userInput.focus();
+            }
+        }
+
+        sendBtn.addEventListener('click', sendMessage);
+        userInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+        
+        // --- Document Scanning Logic (Module B) ---
+        scanBtn.addEventListener('click', () => {
+            fileInput.click();
+        });
+        
+        fileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            addMessage('system', 'Uploading and scanning document... Please wait.');
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            try {
+                const response = await fetch('/api/scan_document', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    addMessage('system', 'Error scanning document: ' + (data.detail || 'Unknown error'));
+                } else {
+                    addMessage('system', 'DOCUMENT SCANNED SUCCESSFULLY:\n\n' + data.extracted_data);
+                    
+                    // Add this info to the LLM's chat context behind the scenes!
+                    chatHistory.push({
+                        role: "user", 
+                        content: "[SYSTEM NOTE: The patient uploaded a medical document. Extracted details: " + data.extracted_data + "]"
+                    });
+                }
+            } catch (error) {
+                addMessage('system', 'Failed to upload document.');
+            }
+            
+            // reset file input
+            fileInput.value = '';
+        });
+
+        // Web Speech API Integration
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (SpeechRecognition) {
+            const recognition = new SpeechRecognition();
+            recognition.interimResults = false;
+
+            recognition.onstart = function() {
+                voiceBtn.classList.remove('bg-red-500');
+                voiceBtn.classList.add('bg-green-500', 'animate-pulse');
+                userInput.placeholder = "Listening...";
+            };
+
+            recognition.onresult = function(event) {
+                const transcript = event.results[0][0].transcript;
+                userInput.value = transcript;
+                sendMessage(); // Auto send when they finish speaking
+            };
+
+            recognition.onerror = function(event) {
+                console.error("Speech error:", event.error);
+                userInput.placeholder = "Error listening. Type your symptoms here...";
+                voiceBtn.classList.add('bg-red-500');
+                voiceBtn.classList.remove('bg-green-500', 'animate-pulse');
+            };
+
+            recognition.onend = function() {
+                voiceBtn.classList.add('bg-red-500');
+                voiceBtn.classList.remove('bg-green-500', 'animate-pulse');
+                userInput.placeholder = "Type your symptoms here...";
+            };
+
+            voiceBtn.addEventListener('click', () => {
+                recognition.lang = voiceLang;
+                userInput.placeholder = voiceLang === 'hi-IN' ? 'Sun raha hoon...' : 'Listening...';
+                recognition.start();
+            });
+
+        } else {
+            voiceBtn.addEventListener('click', () => {
+                alert("Your browser does not support the Web Speech API. Please use Google Chrome or Edge.");
+            });
+        }
+        
+        document.getElementById('finish-btn').addEventListener('click', async () => {
+            if(chatHistory.length === 0) {
+                alert("No history to summarize!");
+                return;
+            }
+            
+            // Show modal and loading state
+            document.getElementById('token-modal').classList.remove('hidden');
+            document.getElementById('token-loading').classList.remove('hidden');
+            document.getElementById('token-result').classList.add('hidden');
+            
+            try {
+                const abhaId = localStorage.getItem('patient_abha') || 'unknown';
+                const response = await fetch('/api/generate_summary', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        patient_id: abhaId,
+                        history: chatHistory
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    // Store server-generated token & summary
+                    localStorage.setItem('medikiosk_token_id', data.token_id);
+                    localStorage.setItem('medikiosk_history', JSON.stringify(chatHistory));
+                    localStorage.setItem('medikiosk_summary', JSON.stringify(data));
+                    
+                    // Update token modal UI
+                    document.getElementById('token-dept').innerText = data.department;
+                    document.getElementById('token-priority').innerText = data.priority;
+                    document.getElementById('token-queue').innerText = '#' + data.queue_number;
+                    
+                    // Switch modal view
+                    document.getElementById('token-loading').classList.add('hidden');
+                    document.getElementById('token-result').classList.remove('hidden');
+                } else {
+                    alert("Error generating token: " + data.detail);
+                    document.getElementById('token-modal').classList.add('hidden');
+                }
+            } catch(e) {
+                alert("Network error.");
+                document.getElementById('token-modal').classList.add('hidden');
+            }
+        });
+
+    </script>
+</body>
+</html>

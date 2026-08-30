@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MediKiosk – Doctor Panel</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        .prose h2{color:#1e3a8a;margin-top:1.2em;margin-bottom:.4em;font-size:1.05em;font-weight:700;border-bottom:1px solid #e5e7eb;padding-bottom:.3em;text-transform:uppercase;letter-spacing:.05em}
+        .prose p{margin-bottom:.8em;line-height:1.7;color:#374151}
+        .prose ul{list-style:disc;margin-left:1.5em;margin-bottom:.8em;color:#374151}
+        .prose strong{color:#111827;font-weight:600}
+        .priority-Emergency{background:#fef2f2;border-left:4px solid #dc2626;color:#991b1b}
+        .priority-High{background:#fff7ed;border-left:4px solid #ea580c;color:#9a3412}
+        .priority-Medium{background:#fefce8;border-left:4px solid #ca8a04;color:#854d0e}
+        .priority-Low{background:#f0fdf4;border-left:4px solid #16a34a;color:#166534}
+        .badge-Emergency{background:#dc2626;color:#fff}
+        .badge-High{background:#ea580c;color:#fff}
+        .badge-Medium{background:#ca8a04;color:#fff}
+        .badge-Low{background:#16a34a;color:#fff}
+        .badge-Pending{background:#6366f1;color:#fff}
+        .badge-Approved{background:#16a34a;color:#fff}
+        @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+        .fade-in{animation:fadeIn .25s ease-out}
+    </style>
+</head>
+<body class="bg-slate-100 min-h-screen font-sans">
+
+<!-- Header -->
+<header class="bg-slate-900 text-white shadow-2xl sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+        <div class="flex items-center space-x-3">
+            <div class="w-9 h-9 bg-orange-500 rounded-lg flex items-center justify-center font-bold text-white text-lg shadow">M</div>
+            <div>
+                <h1 class="text-lg font-bold tracking-wide">MediKiosk</h1>
+                <p class="text-xs text-slate-400">Doctor Panel · Patient Queue</p>
+            </div>
+        </div>
+        <div class="flex items-center space-x-3">
+            <!-- Doctor Name Input -->
+            <input id="doctor-name" type="text" placeholder="Your Name (Dr. ...)" 
+                class="bg-slate-800 text-white border border-slate-600 rounded-lg px-3 py-1.5 text-sm placeholder-slate-400 focus:outline-none focus:border-orange-400 w-44">
+            <!-- Dept Filter -->
+            <select id="dept-filter" class="bg-slate-800 text-white border border-slate-600 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-orange-400">
+                <option value="">All Departments</option>
+                <option>General Medicine</option>
+                <option>Orthopedics</option>
+                <option>Cardiology</option>
+                <option>Neurology</option>
+                <option>ENT</option>
+                <option>Dermatology</option>
+                <option>Psychiatry</option>
+                <option>Gynecology</option>
+            </select>
+            <button onclick="loadQueue()" class="bg-orange-500 hover:bg-orange-600 text-white text-sm font-bold px-4 py-1.5 rounded-lg transition-colors flex items-center space-x-1.5">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                <span>Refresh</span>
+            </button>
+            <div class="text-xs text-slate-400 hidden" id="last-refresh">Updated just now</div>
+        </div>
+    </div>
+</header>
+
+<div class="max-w-7xl mx-auto px-4 py-6">
+
+    <!-- Stats Row -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6" id="stats-row">
+        <div class="bg-white rounded-xl p-4 shadow-sm border border-slate-200">
+            <p class="text-xs text-slate-500 uppercase tracking-wider font-bold">Total Patients</p>
+            <p class="text-3xl font-bold text-slate-800 mt-1" id="stat-total">—</p>
+        </div>
+        <div class="bg-red-50 rounded-xl p-4 shadow-sm border border-red-200">
+            <p class="text-xs text-red-600 uppercase tracking-wider font-bold">Emergency</p>
+            <p class="text-3xl font-bold text-red-700 mt-1" id="stat-emergency">—</p>
+        </div>
+        <div class="bg-orange-50 rounded-xl p-4 shadow-sm border border-orange-200">
+            <p class="text-xs text-orange-600 uppercase tracking-wider font-bold">High Priority</p>
+            <p class="text-3xl font-bold text-orange-700 mt-1" id="stat-high">—</p>
+        </div>
+        <div class="bg-indigo-50 rounded-xl p-4 shadow-sm border border-indigo-200">
+            <p class="text-xs text-indigo-600 uppercase tracking-wider font-bold">Pending Approval</p>
+            <p class="text-3xl font-bold text-indigo-700 mt-1" id="stat-pending">—</p>
+        </div>
+    </div>
+
+    <!-- Queue List -->
+    <div id="queue-container" class="space-y-4">
+        <div class="text-center py-20 text-slate-400">
+            <svg class="w-12 h-12 mx-auto mb-4 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+            <p class="font-semibold">Click Refresh to load the patient queue</p>
+        </div>
+    </div>
+</div>
+
+<!-- Patient Detail Modal -->
+<div id="detail-modal" class="fixed inset-0 bg-black/60 hidden z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+        <div class="flex justify-between items-start p-6 border-b border-slate-200 bg-slate-50 shrink-0">
+            <div>
+                <h2 class="text-xl font-bold text-slate-800">Patient Summary</h2>
+                <p class="text-sm text-slate-500 mt-0.5" id="modal-meta">Token — · ABHA —</p>
+            </div>
+            <button onclick="closeModal()" class="text-slate-400 hover:text-slate-700 transition-colors">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div class="overflow-y-auto p-6 flex-1">
+            <div id="modal-routing" class="bg-slate-50 border-l-4 border-blue-500 p-4 mb-5 rounded-r flex space-x-8"></div>
+            <div id="modal-summary" class="prose max-w-none"></div>
+        </div>
+        <div class="p-5 border-t border-slate-200 bg-slate-50 shrink-0 flex space-x-3" id="modal-actions"></div>
+    </div>
+</div>
+
+<script>
+let currentToken = null;
+
+async function loadQueue() {
+    const dept = document.getElementById('dept-filter').value;
+    const url = dept ? `/api/queue?department=${encodeURIComponent(dept)}` : '/api/queue';
+    
+    try {
+        const res = await fetch(url);
+        const data = await res.json();
+        renderQueue(data.queue);
+        updateStats(data.queue);
+        document.getElementById('last-refresh').classList.remove('hidden');
+        document.getElementById('last-refresh').textContent = 'Updated ' + new Date().toLocaleTimeString();
+    } catch(e) {
+        document.getElementById('queue-container').innerHTML = `<div class="text-center py-10 text-red-500">Failed to load queue. Is the server running?</div>`;
+    }
+}
+
+function updateStats(queue) {
+    document.getElementById('stat-total').textContent = queue.length;
+    document.getElementById('stat-emergency').textContent = queue.filter(p => p.priority === 'Emergency').length;
+    document.getElementById('stat-high').textContent = queue.filter(p => p.priority === 'High').length;
+    document.getElementById('stat-pending').textContent = queue.filter(p => p.status === 'Pending').length;
+}
+
+function renderQueue(queue) {
+    const container = document.getElementById('queue-container');
+    if (queue.length === 0) {
+        container.innerHTML = `<div class="text-center py-20 text-slate-400 bg-white rounded-xl border border-slate-200">
+            <p class="text-lg font-semibold">No patients in queue</p>
+            <p class="text-sm mt-1">Patients will appear here after completing the kiosk interview.</p>
+        </div>`;
+        return;
+    }
+    container.innerHTML = '';
+    queue.forEach(patient => {
+        const card = document.createElement('div');
+        card.className = `bg-white rounded-xl shadow-sm border border-slate-200 p-5 flex items-center justify-between gap-4 priority-${patient.priority} fade-in cursor-pointer hover:shadow-md transition-shadow`;
+        card.onclick = () => openModal(patient);
+        
+        const time = new Date(patient.timestamp).toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit'});
+        
+        card.innerHTML = `
+            <div class="flex items-center space-x-4 flex-1 min-w-0">
+                <div class="w-14 h-14 rounded-full bg-white border-2 border-current flex items-center justify-center shrink-0 shadow-sm">
+                    <span class="text-2xl font-black">#${patient.queue_number}</span>
+                </div>
+                <div class="min-w-0">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span class="font-bold text-slate-800 text-lg">${patient.department}</span>
+                        <span class="badge-${patient.priority} text-xs font-bold px-2 py-0.5 rounded-full">${patient.priority}</span>
+                        <span class="badge-${patient.status} text-xs font-bold px-2 py-0.5 rounded-full">${patient.status}</span>
+                    </div>
+                    <p class="text-sm text-slate-600 mt-0.5 font-mono truncate">ABHA: ${patient.abha_id}</p>
+                    <p class="text-xs text-slate-400 mt-0.5">Token: <strong>${patient.token_id}</strong> · Arrived: ${time}</p>
+                </div>
+            </div>
+            <div class="shrink-0">
+                ${patient.status === 'Pending' 
+                    ? `<button onclick="event.stopPropagation(); quickApprove('${patient.token_id}')" class="bg-green-600 hover:bg-green-700 text-white font-bold px-5 py-2.5 rounded-xl transition-colors shadow-sm flex items-center space-x-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+                        <span>Approve</span>
+                      </button>`
+                    : `<div class="text-green-700 font-semibold text-sm flex items-center space-x-1">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        <span>Approved by ${patient.approved_by || 'Doctor'}</span>
+                      </div>`
+                }
+            </div>
+        `;
+        container.appendChild(card);
+    });
+}
+
+function openModal(patient) {
+    currentToken = patient.token_id;
+    document.getElementById('modal-meta').textContent = `Token ${patient.token_id} · ABHA ${patient.abha_id}`;
+    
+    document.getElementById('modal-routing').innerHTML = `
+        <div><span class="text-xs text-slate-500 uppercase font-bold tracking-wider">Department</span><p class="text-lg font-bold text-slate-800">${patient.department}</p></div>
+        <div><span class="text-xs text-slate-500 uppercase font-bold tracking-wider">Priority</span><p class="text-lg font-bold ${patient.priority === 'High' || patient.priority === 'Emergency' ? 'text-red-600' : 'text-orange-500'}">${patient.priority}</p></div>
+        <div><span class="text-xs text-slate-500 uppercase font-bold tracking-wider">Queue #</span><p class="text-lg font-bold text-slate-800">#${patient.queue_number}</p></div>
+        <div><span class="text-xs text-slate-500 uppercase font-bold tracking-wider">Status</span><p class="text-lg font-bold ${patient.status === 'Approved' ? 'text-green-600' : 'text-indigo-600'}">${patient.status}</p></div>
+    `;
+    
+    document.getElementById('modal-summary').innerHTML = marked.parse(patient.summary_markdown || '_No summary available._');
+    
+    const actions = document.getElementById('modal-actions');
+    if (patient.status === 'Pending') {
+        actions.innerHTML = `
+            <button onclick="approveFromModal()" class="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-xl transition-colors flex items-center justify-center space-x-2 shadow-md">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+                <span>Approve Patient</span>
+            </button>
+            <button onclick="closeModal()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 px-6 rounded-xl transition-colors">Close</button>
+        `;
+    } else {
+        actions.innerHTML = `<p class="text-green-700 font-semibold">✅ Already approved by ${patient.approved_by}</p><button onclick="closeModal()" class="ml-auto bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 px-6 rounded-xl transition-colors">Close</button>`;
+    }
+    
+    document.getElementById('detail-modal').classList.remove('hidden');
+}
+
+function closeModal() {
+    document.getElementById('detail-modal').classList.add('hidden');
+    currentToken = null;
+}
+
+async function quickApprove(tokenId) {
+    const doctorName = document.getElementById('doctor-name').value.trim() || 'Doctor';
+    await doApprove(tokenId, doctorName);
+}
+
+async function approveFromModal() {
+    if (!currentToken) return;
+    const doctorName = document.getElementById('doctor-name').value.trim() || 'Doctor';
+    await doApprove(currentToken, doctorName);
+    closeModal();
+}
+
+async function doApprove(tokenId, doctorName) {
+    try {
+        const res = await fetch('/api/approve', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({token_id: tokenId, doctor_name: doctorName})
+        });
+        if (res.ok) {
+            loadQueue();
+        } else {
+            alert('Approval failed. Please try again.');
+        }
+    } catch(e) {
+        alert('Network error.');
+    }
+}
+
+// Auto-refresh every 15 seconds
+loadQueue();
+setInterval(loadQueue, 15000);
+</script>
+</body>
+</html>
