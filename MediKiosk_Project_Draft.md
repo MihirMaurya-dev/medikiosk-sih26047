@@ -10,16 +10,22 @@
 
 ## 1. Problem Statement
 
-Indian government hospitals face three interconnected bottlenecks at OPD:
+Indian government hospitals face a massive patient load, leading to four interconnected bottlenecks at the Outpatient Department (OPD):
 
-| Problem | Impact |
-|---|---|
-| Doctors spend 3–5 min per patient re-taking basic history | 30–40 patient slots wasted per doctor per day |
-| Patients routed to wrong department at registration | Double waiting time, frustrated patients |
-| Paper reports and lab results not seen before consultation | Doctor makes decisions without full context |
-| No triage — all patients wait the same queue regardless of severity | Emergency cases not fast-tracked |
+1. **Wasted Doctor Time (History Taking):**
+    * **The Issue:** Doctors spend 3 to 5 minutes per patient simply asking basic questions (e.g., *"Kab se dard hai? Kahan dard hai? Puraani dawai kya le rahe ho?"*).
+    * **The Impact:** If a doctor sees 100 patients a day, they waste up to **6 hours** just taking basic history. That is time that should be spent on diagnosis and treatment.
+2. **Incorrect Department Routing:**
+    * **The Issue:** At the registration counter, non-medical staff (or confused patients) often select the wrong department (e.g., sending a patient with chest pain caused by acid reflux to Cardiology instead of General Medicine).
+    * **The Impact:** The patient waits 2 hours to see a doctor, only to be told, *"Yeh mera department nahi hai, wahan jao."* This doubles their waiting time and frustrates everyone.
+3. **Hidden Context (Paper Reports):**
+    * **The Issue:** Patients bring old, crumpled paper reports and lab results. The doctor has to spend time reading them on the spot.
+    * **The Impact:** Doctors are forced to make rapid decisions without a clean, organized view of the patient's past medical history and current lab values.
+4. **No Intelligent Triage (First-Come, First-Served):**
+    * **The Issue:** A patient with a minor headache and a patient having a mild heart attack are put in the same queue.
+    * **The Impact:** Critical emergency cases are not fast-tracked, leading to severe risks.
 
-MediKiosk addresses all four simultaneously through a single kiosk touchpoint placed before the OPD consultation.
+**The MediKiosk Solution:** A single, multilingual, voice-enabled kiosk placed *before* the consultation room that solves all four problems automatically.
 
 ---
 
