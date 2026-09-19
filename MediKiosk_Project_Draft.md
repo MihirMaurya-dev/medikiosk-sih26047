@@ -117,32 +117,42 @@ Patient arrives at hospital
 
 ```mermaid
 graph TD
-    subgraph Patient Kiosk
-        A[Patient] -->|Speaks / Types| B(Web Speech API)
-        B -->|Transcribed Text| C[Chat Interface]
-        O[Physical Documents] -->|Camera Scan| P[OCR Module]
+    %% Patient Kiosk Interactions
+    subgraph Kiosk UI
+        A[index.html<br>ABHA Auth] -->|Start Session| B[chat.html<br>Conversational Interface]
+        B -->|Speech-to-Text| STT(Web Speech API)
+        B -->|Upload Doc| Cam(File/Camera Scan)
     end
 
+    %% Backend Services
     subgraph FastAPI Backend
-        C -->|POST /api/chat| D[Dialogue Manager]
-        P -->|POST /api/scan_document| V[Vision Processing]
-        D <-->|Text Inference| E((Groq / Llama-3))
-        V <-->|Multimodal OCR| F((Gemini 3.5 Flash))
-        E -.->|Rate Limit Fallback| F
+        STT -->|POST /api/chat| ChatE[Chat Endpoint]
+        Cam -->|POST /api/scan_document| OCRE[OCR Endpoint]
+        
+        ChatE -->|Inference| Groq((Groq API<br>Llama-3.1-8b))
+        Groq -.->|On Failure Fallback| Gemini((Gemini API<br>3.5-Flash-Lite))
+        OCRE -->|Vision Task| Gemini
+        
+        ChatE -->|Check Response| EFlag{Has [EMERGENCY_FLAG]?}
+        EFlag -->|Yes| Siren[🚨 Instant UI Siren]
+        EFlag -->|No| B
     end
 
-    subgraph LLM Routing Logic
-        E -->|Standard Case| G[SOCRATES Framework]
-        E -->|AYUSH Case| H[Dashavidha Pariksha]
-        E -->|Emergency| I[🚨 Red Flag Alert]
+    %% Summary & Triage Generation
+    subgraph Triage Engine
+        B -->|Finish & Send| SumE[POST /api/generate_summary]
+        SumE -->|Transcript + OCR Context| Groq
+        SumE -.->|On Failure Fallback| Gemini
+        SumE -->|Parse Result| Struct[Extract SOAP JSON, Assign Dept & Priority]
+        Struct -->|Save Token| DB[(session_data.json)]
     end
 
-    subgraph Doctor Terminal
-        G & H -->|Summarize| J[SOAP / Dashavidha Note]
-        F -->|Extract OCR| J
-        J -->|Store| K[(Queue Database)]
-        K -->|Server-Sent Events| L[Doctor Dashboard]
-        L -->|Approve & Push| M((ABDM / ABHA EMR))
+    %% Synchronized Status & Doctor Approval
+    subgraph Waiting & Approval
+        DB -->|Server-Sent Events| SSE[status.html<br>Live Patient Status]
+        DB -->|GET /api/queue| Doc[doctor_panel.html<br>Doctor Queue]
+        Doc -->|Review & Approve| App[POST /api/approve]
+        App -->|Update Record| DB
     end
 ```
 
