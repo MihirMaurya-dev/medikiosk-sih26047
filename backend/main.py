@@ -22,9 +22,10 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Configure Gemini (Primary)
 api_key = os.getenv("GEMINI_API_KEY")
+model = None
 if api_key:
     genai.configure(api_key=api_key)
-model = genai.GenerativeModel('gemini-3.5-flash-lite')
+    model = genai.GenerativeModel('gemini-3.5-flash-lite')
 
 # Configure Fallback (Groq or OpenAI)
 fallback_client = None
@@ -89,17 +90,25 @@ class ApproveRequest(BaseModel):
     token_id: str
     doctor_name: str
 
-import os
-
 def load_prompts():
+    """Load LLM prompts from agent.md. Falls back to defaults if file is missing."""
     prompt_file = os.path.join(os.path.dirname(__file__), "agent.md")
-    with open(prompt_file, "r", encoding="utf-8") as f:
-        content = f.read()
-    
-    parts = content.split("---")
-    chat_prompt = parts[0].replace("# CHAT_AGENT_PROMPT", "").strip()
-    summary_prompt = parts[1].replace("# SUMMARY_AGENT_PROMPT", "").strip()
-    return chat_prompt, summary_prompt
+    try:
+        with open(prompt_file, "r", encoding="utf-8") as f:
+            content = f.read()
+        parts = content.split("---")
+        if len(parts) < 2:
+            raise ValueError("agent.md must contain two sections separated by '---'")
+        chat_prompt = parts[0].replace("# CHAT_AGENT_PROMPT", "").strip()
+        summary_prompt = parts[1].replace("# SUMMARY_AGENT_PROMPT", "").strip()
+        print("[MediKiosk] agent.md loaded successfully.")
+        return chat_prompt, summary_prompt
+    except FileNotFoundError:
+        print("[WARN] agent.md not found! Using empty prompts — check the file exists in /backend/")
+        return "You are a helpful medical assistant.", "Generate a clinical summary for: {transcript}"
+    except Exception as e:
+        print(f"[WARN] Failed to load agent.md: {e}")
+        return "You are a helpful medical assistant.", "Generate a clinical summary for: {transcript}"
 
 SYSTEM_PROMPT, SUMMARY_PROMPT_TEMPLATE = load_prompts()
 
@@ -138,15 +147,20 @@ async def chat_with_patient(request: ChatRequest):
         
         # ── Fallback: Gemini (if Groq fails or not configured) ──
         if not reply:
+            if not model:
+                raise HTTPException(status_code=500, detail="No AI provider configured. Please set GEMINI_API_KEY or GROQ_API_KEY in .env")
             gemini_history = []
             for msg in request.history:
                 role = "model" if msg.role == "assistant" else "user"
                 gemini_history.append({"role": role, "parts": [msg.content]})
             
-            chat = model.start_chat(history=gemini_history)
-            full_input = f"System Instruction: {SYSTEM_PROMPT}\n\nPatient: {request.current_input}" if not request.history else request.current_input
+            # Always prepend system prompt as first user message for Gemini
+            if not gemini_history:
+                gemini_history = [{"role": "user", "parts": [f"[SYSTEM]: {SYSTEM_PROMPT}"]}]
+                gemini_history.append({"role": "model", "parts": ["Understood. I am MediKiosk, ready to assist."]})
             
-            response = chat.send_message(full_input)
+            chat = model.start_chat(history=gemini_history)
+            response = chat.send_message(request.current_input)
             reply = response.text
 
         is_emergency = "[EMERGENCY_FLAG]" in reply
@@ -154,8 +168,10 @@ async def chat_with_patient(request: ChatRequest):
 
         return ChatResponse(doctor_response=reply, is_emergency=is_emergency)
 
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"Error: {str(e)}")
+        print(f"Error in chat: {str(e)}")
         error_msg = str(e)
         if "429" in error_msg or "ResourceExhausted" in error_msg or "quota" in error_msg.lower():
             return ChatResponse(
@@ -172,28 +188,46 @@ async def chat_with_patient(request: ChatRequest):
 @app.post("/api/scan_document")
 async def scan_document(file: UploadFile = File(...)):
     try:
-        if not api_key or api_key == "your_api_key_here":
-            return {"extracted_data": "Mock data: Paracetamol 500mg, 1 tablet twice a day."}
+        # Mock mode — no API key
+        if not api_key or not model:
+            return {"extracted_data": "Mock data: Paracetamol 500mg, 1 tablet twice a day. Blood Sugar: 140 mg/dL (High)."}
+
+        # Validate file type
+        allowed_types = ["image/jpeg", "image/png", "image/webp", "image/heic", "application/pdf"]
+        if file.content_type not in allowed_types:
+            raise HTTPException(status_code=400, detail=f"Unsupported file type: {file.content_type}. Please upload JPG, PNG, or PDF.")
 
         contents = await file.read()
-        image_parts = [{"mime_type": file.content_type, "data": contents}]
+        if len(contents) > 10 * 1024 * 1024:  # 10MB limit
+            raise HTTPException(status_code=400, detail="File too large. Please upload files smaller than 10MB.")
 
-        prompt = """You are an expert medical document parser. Read this document and extract key medical information:
-        - Document Type
-        - Key Diagnoses or Findings
-        - Medications (with dosages)
-        - Abnormal lab values
-        Format as clean bullet points."""
+        image_part = {"mime_type": file.content_type, "data": contents}
 
-        response = model.generate_content([prompt, image_parts[0]])
+        prompt = """You are an expert medical document parser for an Indian government hospital.
+Carefully read this document image and extract ALL medical information present.
+Format your response as clean bullet points covering:
+• Document Type (prescription / lab report / discharge summary / X-ray report / other)
+• Patient Name & Date (if visible)
+• Doctor / Hospital Name (if visible)
+• Diagnoses or Clinical Findings
+• Medications prescribed (with dosage and frequency)
+• Lab Test Results (mark values as NORMAL / HIGH / LOW where possible)
+• Any follow-up instructions
+
+If information is unclear or handwritten, note it as [unclear] but still try to extract."""
+
+        response = model.generate_content([prompt, image_part])
         return {"extracted_data": response.text}
 
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error scanning document: {str(e)}")
         error_msg = str(e)
         if "429" in error_msg or "ResourceExhausted" in error_msg or "quota" in error_msg.lower():
             return {"extracted_data": "⏳ OCR Server is currently busy (Rate Limit). Please wait 30 seconds and try scanning again."}
-        raise HTTPException(status_code=500, detail=error_msg)
+        raise HTTPException(status_code=500, detail=f"OCR failed: {error_msg}")
+
 
 
 # ─────────────────────────────────────────
@@ -213,11 +247,15 @@ async def generate_summary(request: SummaryRequest):
                 "priority": "High",
                 "queue_number": DEPT_COUNTERS[dept],
                 "summary_markdown": "## Chief Complaint\nSevere bone pain in left leg.\n\n## HPI\nPain for 3 days, rating 8/10.",
+                "soap": {"S": "Severe left leg pain", "O": "To be collected", "A": "Fracture vs muscle strain", "P": "X-Ray left leg"},
+                "confidence_flags": [],
+                "reports": [],
                 "status": "Pending",
                 "approved_by": None,
                 "timestamp": datetime.now().isoformat()
             }
             PATIENT_QUEUE[token_id] = token_data
+            _save_session()
             return token_data
 
         transcript = ""
@@ -228,6 +266,9 @@ async def generate_summary(request: SummaryRequest):
                 report_analysis.append(msg.content.replace("[SYSTEM NOTE: The patient uploaded a medical document. Extracted details: ", "").rstrip("]"))
             elif not msg.content.startswith("[SYSTEM NOTE"):
                 transcript += f"{msg.role.upper()}: {msg.content}\n"
+
+        if not transcript.strip():
+            raise HTTPException(status_code=400, detail="No conversation history found to summarize.")
 
         prompt = SUMMARY_PROMPT_TEMPLATE.replace("{transcript}", transcript)
 
@@ -244,34 +285,43 @@ async def generate_summary(request: SummaryRequest):
                 print(f"[WARN] Groq summary failed, falling back to Gemini: {e}")
                 
         if not raw_text:
+            if not model:
+                raise HTTPException(status_code=500, detail="No AI provider configured. Please set GEMINI_API_KEY or GROQ_API_KEY in .env")
             try:
                 response = model.generate_content(prompt)
                 raw_text = response.text.strip()
             except Exception as api_err:
                 error_msg = str(api_err)
-                if ("429" in error_msg or "ResourceExhausted" in error_msg or "quota" in error_msg.lower()) and fallback_client:
-                    raise HTTPException(status_code=500, detail="⏳ Both Groq and Gemini failed/busy. Please try again.")
+                if "429" in error_msg or "ResourceExhausted" in error_msg or "quota" in error_msg.lower():
+                    raise HTTPException(status_code=500, detail="⏳ Both Groq and Gemini are busy. Please wait 30 seconds and try again.")
                 raise api_err
 
-
-        if raw_text.startswith("```json"):
-            raw_text = raw_text[7:]
+        # Robust markdown code fence stripping
+        raw_text = raw_text.strip()
         if raw_text.startswith("```"):
-            raw_text = raw_text[3:]
+            raw_text = raw_text.split("\n", 1)[-1]  # remove first line (```json or ```)
         if raw_text.endswith("```"):
-            raw_text = raw_text[:-3]
+            raw_text = raw_text.rsplit("```", 1)[0]  # remove trailing fence
+        raw_text = raw_text.strip()
 
         try:
-            data = json.loads(raw_text.strip())
-        except:
+            data = json.loads(raw_text)
+        except json.JSONDecodeError as parse_err:
+            print(f"[WARN] JSON parse failed: {parse_err}. Using raw text as summary.")
             data = {
                 "summary_markdown": raw_text,
                 "department": "General Medicine",
-                "priority": "Medium"
+                "priority": "Medium",
+                "soap": {},
+                "confidence_flags": []
             }
 
-        # Assign queue number per department
+        # Validate department against allowed list
+        VALID_DEPTS = ["Cardiology", "Orthopedics", "Neurology", "General Medicine", "ENT",
+                       "Dermatology", "Psychiatry", "Gynecology", "Emergency", "Ayurveda (AYUSH)"]
         dept = data.get("department", "General Medicine")
+        if dept not in VALID_DEPTS:
+            dept = "General Medicine"
         DEPT_COUNTERS[dept] = DEPT_COUNTERS.get(dept, 0) + 1
 
         token_id = str(uuid.uuid4())[:8].upper()
@@ -285,14 +335,16 @@ async def generate_summary(request: SummaryRequest):
             "soap": data.get("soap", {}),
             "confidence_flags": data.get("confidence_flags", []),
             "reports": report_analysis,
-            "status": "Pending",    # Pending / Approved
+            "status": "Pending",
             "approved_by": None,
             "timestamp": datetime.now().isoformat()
         }
         PATIENT_QUEUE[token_id] = token_data
-        _save_session()   # persist to disk immediately
+        _save_session()
         return token_data
 
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error generating summary: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
