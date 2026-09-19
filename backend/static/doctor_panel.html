@@ -6,43 +6,55 @@
     <title>MediKiosk – Doctor Panel</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
     <style>
-        .prose h2{color:#1e3a8a;margin-top:1.2em;margin-bottom:.4em;font-size:1.05em;font-weight:700;border-bottom:1px solid #e5e7eb;padding-bottom:.3em;text-transform:uppercase;letter-spacing:.05em}
-        .prose p{margin-bottom:.8em;line-height:1.7;color:#374151}
-        .prose ul{list-style:disc;margin-left:1.5em;margin-bottom:.8em;color:#374151}
-        .prose strong{color:#111827;font-weight:600}
-        .priority-Emergency{background:#fef2f2;border-left:4px solid #dc2626;color:#991b1b}
-        .priority-High{background:#fff7ed;border-left:4px solid #ea580c;color:#9a3412}
-        .priority-Medium{background:#fefce8;border-left:4px solid #ca8a04;color:#854d0e}
-        .priority-Low{background:#f0fdf4;border-left:4px solid #16a34a;color:#166534}
-        .badge-Emergency{background:#dc2626;color:#fff}
-        .badge-High{background:#ea580c;color:#fff}
-        .badge-Medium{background:#ca8a04;color:#fff}
-        .badge-Low{background:#16a34a;color:#fff}
-        .badge-Pending{background:#6366f1;color:#fff}
-        .badge-Approved{background:#16a34a;color:#fff}
-        @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-        .fade-in{animation:fadeIn .25s ease-out}
+        body { font-family: 'Inter', sans-serif; }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+        /* Priority row borders */
+        .pri-Emergency { border-left: 4px solid #dc2626; background: #fff5f5; }
+        .pri-High      { border-left: 4px solid #ea580c; background: #fff8f5; }
+        .pri-Medium    { border-left: 4px solid #d97706; background: #fffdf5; }
+        .pri-Low       { border-left: 4px solid #16a34a; background: #f5fff7; }
+        /* Badges */
+        .badge { display:inline-flex; align-items:center; font-size:.65rem; font-weight:700; padding:.2rem .55rem; border-radius:999px; letter-spacing:.04em; text-transform:uppercase; }
+        .badge-Emergency { background:#fee2e2; color:#991b1b; }
+        .badge-High      { background:#ffedd5; color:#9a3412; }
+        .badge-Medium    { background:#fef9c3; color:#854d0e; }
+        .badge-Low       { background:#dcfce7; color:#166534; }
+        .badge-Pending   { background:#e0e7ff; color:#3730a3; }
+        .badge-Approved  { background:#dcfce7; color:#166534; }
+        /* Modal */
+        #detail-modal { backdrop-filter: blur(4px); }
+        /* Prose inside modal */
+        .prose-sm h2 { color:#1e40af; margin-top:1em; margin-bottom:.3em; font-size:.85em; font-weight:700; border-bottom:1px solid #e5e7eb; padding-bottom:.25em; letter-spacing:.05em; text-transform:uppercase; }
+        .prose-sm p  { margin-bottom:.6em; line-height:1.65; color:#374151; font-size:.875rem; }
+        .prose-sm ul { list-style:disc; margin-left:1.4em; margin-bottom:.6em; color:#374151; font-size:.875rem; }
+        .prose-sm strong { color:#111827; }
+        /* Animations */
+        @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+        .fade-in { animation: fadeIn .22s ease-out; }
+        @keyframes slideUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+        .modal-slide { animation: slideUp .28s cubic-bezier(.21,1.02,.73,1) both; }
     </style>
 </head>
-<body class="bg-slate-100 min-h-screen font-sans">
+<body class="bg-slate-100 min-h-screen flex flex-col">
 
-<!-- Header -->
-<header class="bg-slate-900 text-white shadow-2xl sticky top-0 z-30">
-    <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
-        <div class="flex items-center space-x-3">
-            <div class="w-9 h-9 bg-orange-500 rounded-lg flex items-center justify-center font-bold text-white text-lg shadow">M</div>
+<!-- ────────────── HEADER ────────────── -->
+<header class="bg-[#0f172a] text-white shadow-2xl sticky top-0 z-30 shrink-0">
+    <div class="max-w-7xl mx-auto px-5 py-3 flex items-center justify-between gap-4">
+        <!-- Brand -->
+        <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center font-extrabold text-white text-base shadow-md">M</div>
             <div>
-                <h1 class="text-lg font-bold tracking-wide">MediKiosk</h1>
-                <p class="text-xs text-slate-400">Doctor Panel · Patient Queue</p>
+                <p class="text-[10px] text-slate-400 uppercase tracking-widest font-semibold">MediKiosk &rsaquo; Doctor Panel</p>
+                <h1 class="text-sm font-bold leading-tight">Patient Queue &amp; Review</h1>
             </div>
         </div>
-        <div class="flex items-center space-x-3">
-            <!-- Doctor Name Input -->
-            <input id="doctor-name" type="text" placeholder="Your Name (Dr. ...)" 
-                class="bg-slate-800 text-white border border-slate-600 rounded-lg px-3 py-1.5 text-sm placeholder-slate-400 focus:outline-none focus:border-orange-400 w-44">
-            <!-- Dept Filter -->
-            <select id="dept-filter" class="bg-slate-800 text-white border border-slate-600 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-orange-400">
+        <!-- Controls -->
+        <div class="flex items-center gap-2 flex-wrap justify-end">
+            <input id="doctor-name" type="text" placeholder="Dr. Your Name"
+                class="bg-slate-800 text-white border border-slate-700 rounded-lg px-3 py-2 text-sm placeholder-slate-500 focus:outline-none focus:border-blue-500 w-40 transition-colors">
+            <select id="dept-filter" class="bg-slate-800 text-white border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 transition-colors">
                 <option value="">All Departments</option>
                 <option>General Medicine</option>
                 <option>Orthopedics</option>
@@ -52,64 +64,90 @@
                 <option>Dermatology</option>
                 <option>Psychiatry</option>
                 <option>Gynecology</option>
+                <option>Ayurveda (AYUSH)</option>
             </select>
-            <button onclick="loadQueue()" class="bg-orange-500 hover:bg-orange-600 text-white text-sm font-bold px-4 py-1.5 rounded-lg transition-colors flex items-center space-x-1.5">
+            <button onclick="loadQueue()" class="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors shadow-sm">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                <span>Refresh</span>
+                Refresh
             </button>
-            <div class="text-xs text-slate-400 hidden" id="last-refresh">Updated just now</div>
+            <span class="text-xs text-slate-500 hidden" id="last-refresh"></span>
         </div>
     </div>
 </header>
 
-<div class="max-w-7xl mx-auto px-4 py-6">
+<!-- ────────────── BODY ────────────── -->
+<div class="max-w-7xl mx-auto px-5 py-6 flex-1 w-full">
 
     <!-- Stats Row -->
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6" id="stats-row">
-        <div class="bg-white rounded-xl p-4 shadow-sm border border-slate-200">
-            <p class="text-xs text-slate-500 uppercase tracking-wider font-bold">Total Patients</p>
-            <p class="text-3xl font-bold text-slate-800 mt-1" id="stat-total">—</p>
+        <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex items-center gap-4">
+            <div class="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center">
+                <svg class="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0"/></svg>
+            </div>
+            <div>
+                <p class="text-xs text-slate-400 uppercase font-bold tracking-wide">Total</p>
+                <p class="text-2xl font-extrabold text-slate-800" id="stat-total">—</p>
+            </div>
         </div>
-        <div class="bg-red-50 rounded-xl p-4 shadow-sm border border-red-200">
-            <p class="text-xs text-red-600 uppercase tracking-wider font-bold">Emergency</p>
-            <p class="text-3xl font-bold text-red-700 mt-1" id="stat-emergency">—</p>
+        <div class="bg-white rounded-2xl p-5 shadow-sm border border-red-100 flex items-center gap-4">
+            <div class="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center">
+                <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+            </div>
+            <div>
+                <p class="text-xs text-red-500 uppercase font-bold tracking-wide">Emergency</p>
+                <p class="text-2xl font-extrabold text-red-700" id="stat-emergency">—</p>
+            </div>
         </div>
-        <div class="bg-orange-50 rounded-xl p-4 shadow-sm border border-orange-200">
-            <p class="text-xs text-orange-600 uppercase tracking-wider font-bold">High Priority</p>
-            <p class="text-3xl font-bold text-orange-700 mt-1" id="stat-high">—</p>
+        <div class="bg-white rounded-2xl p-5 shadow-sm border border-orange-100 flex items-center gap-4">
+            <div class="w-10 h-10 bg-orange-50 rounded-xl flex items-center justify-center">
+                <svg class="w-5 h-5 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            </div>
+            <div>
+                <p class="text-xs text-orange-500 uppercase font-bold tracking-wide">High Priority</p>
+                <p class="text-2xl font-extrabold text-orange-700" id="stat-high">—</p>
+            </div>
         </div>
-        <div class="bg-indigo-50 rounded-xl p-4 shadow-sm border border-indigo-200">
-            <p class="text-xs text-indigo-600 uppercase tracking-wider font-bold">Pending Approval</p>
-            <p class="text-3xl font-bold text-indigo-700 mt-1" id="stat-pending">—</p>
+        <div class="bg-white rounded-2xl p-5 shadow-sm border border-indigo-100 flex items-center gap-4">
+            <div class="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center">
+                <svg class="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            </div>
+            <div>
+                <p class="text-xs text-indigo-500 uppercase font-bold tracking-wide">Pending</p>
+                <p class="text-2xl font-extrabold text-indigo-700" id="stat-pending">—</p>
+            </div>
         </div>
     </div>
 
     <!-- Queue List -->
-    <div id="queue-container" class="space-y-4">
-        <div class="text-center py-20 text-slate-400">
-            <svg class="w-12 h-12 mx-auto mb-4 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
-            <p class="font-semibold">Click Refresh to load the patient queue</p>
+    <div id="queue-container" class="space-y-3">
+        <div class="text-center py-24 text-slate-400 bg-white rounded-2xl border border-slate-100">
+            <svg class="w-12 h-12 mx-auto mb-4 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+            <p class="font-semibold text-sm">Click Refresh to load the patient queue</p>
         </div>
     </div>
 </div>
 
-<!-- Patient Detail Modal -->
-<div id="detail-modal" class="fixed inset-0 bg-black/60 hidden z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
-        <div class="flex justify-between items-start p-6 border-b border-slate-200 bg-slate-50 shrink-0">
+<!-- ────────────── MODAL ────────────── -->
+<div id="detail-modal" class="fixed inset-0 bg-black/50 hidden z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden modal-slide">
+        <!-- Modal Header -->
+        <div class="flex items-start justify-between px-6 py-5 border-b border-slate-100 bg-slate-50 shrink-0">
             <div>
-                <h2 class="text-xl font-bold text-slate-800">Patient Summary</h2>
-                <p class="text-sm text-slate-500 mt-0.5" id="modal-meta">Token — · ABHA —</p>
+                <h2 class="text-lg font-bold text-slate-900">Patient Analysis</h2>
+                <p class="text-xs text-slate-400 mt-0.5" id="modal-meta">Token — · ABHA —</p>
             </div>
-            <button onclick="closeModal()" class="text-slate-400 hover:text-slate-700 transition-colors">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            <button onclick="closeModal()" class="text-slate-400 hover:text-slate-700 transition-colors p-1 hover:bg-slate-200 rounded-lg">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
         </div>
-        <div class="overflow-y-auto p-6 flex-1">
-            <div id="modal-routing" class="bg-slate-50 border-l-4 border-blue-500 p-4 mb-5 rounded-r flex space-x-8"></div>
-            <div id="modal-summary" class="prose max-w-none"></div>
+        <!-- Routing strip -->
+        <div id="modal-routing" class="px-6 py-3 border-b border-slate-100 bg-white flex gap-6 shrink-0"></div>
+        <!-- Scrollable content -->
+        <div class="overflow-y-auto p-6 flex-1" id="modal-body">
+            <div id="modal-summary" class="prose-sm max-w-none"></div>
         </div>
-        <div class="p-5 border-t border-slate-200 bg-slate-50 shrink-0 flex space-x-3" id="modal-actions"></div>
+        <!-- Actions -->
+        <div class="px-6 py-4 border-t border-slate-100 bg-slate-50 shrink-0 flex gap-3" id="modal-actions"></div>
     </div>
 </div>
 
@@ -119,16 +157,16 @@ let currentToken = null;
 async function loadQueue() {
     const dept = document.getElementById('dept-filter').value;
     const url = dept ? `/api/queue?department=${encodeURIComponent(dept)}` : '/api/queue';
-    
     try {
         const res = await fetch(url);
         const data = await res.json();
         renderQueue(data.queue);
         updateStats(data.queue);
-        document.getElementById('last-refresh').classList.remove('hidden');
-        document.getElementById('last-refresh').textContent = 'Updated ' + new Date().toLocaleTimeString();
+        const el = document.getElementById('last-refresh');
+        el.classList.remove('hidden');
+        el.textContent = 'Updated ' + new Date().toLocaleTimeString();
     } catch(e) {
-        document.getElementById('queue-container').innerHTML = `<div class="text-center py-10 text-red-500">Failed to load queue. Is the server running?</div>`;
+        document.getElementById('queue-container').innerHTML = `<div class="text-center py-10 text-red-500 bg-white rounded-2xl border border-red-100">Failed to load queue. Is the server running?</div>`;
     }
 }
 
@@ -142,44 +180,42 @@ function updateStats(queue) {
 function renderQueue(queue) {
     const container = document.getElementById('queue-container');
     if (queue.length === 0) {
-        container.innerHTML = `<div class="text-center py-20 text-slate-400 bg-white rounded-xl border border-slate-200">
-            <p class="text-lg font-semibold">No patients in queue</p>
-            <p class="text-sm mt-1">Patients will appear here after completing the kiosk interview.</p>
+        container.innerHTML = `<div class="text-center py-24 text-slate-400 bg-white rounded-2xl border border-slate-100">
+            <svg class="w-12 h-12 mx-auto mb-4 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+            <p class="font-semibold text-sm">Queue is empty — patients will appear here after completing the kiosk interview.</p>
         </div>`;
         return;
     }
     container.innerHTML = '';
     queue.forEach(patient => {
         const card = document.createElement('div');
-        card.className = `bg-white rounded-xl shadow-sm border border-slate-200 p-5 flex items-center justify-between gap-4 priority-${patient.priority} fade-in cursor-pointer hover:shadow-md transition-shadow`;
+        card.className = `bg-white rounded-xl shadow-sm border border-l-0 border-slate-100 flex items-center justify-between gap-4 p-4 pri-${patient.priority} fade-in cursor-pointer hover:shadow-md transition-all`;
         card.onclick = () => openModal(patient);
-        
         const time = new Date(patient.timestamp).toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit'});
-        
         card.innerHTML = `
-            <div class="flex items-center space-x-4 flex-1 min-w-0">
-                <div class="w-14 h-14 rounded-full bg-white border-2 border-current flex items-center justify-center shrink-0 shadow-sm">
-                    <span class="text-2xl font-black">#${patient.queue_number}</span>
+            <div class="flex items-center gap-4 flex-1 min-w-0">
+                <div class="w-12 h-12 rounded-xl bg-white border-2 border-current flex items-center justify-center shrink-0 shadow-sm">
+                    <span class="text-xl font-black">${patient.queue_number}</span>
                 </div>
-                <div class="min-w-0">
-                    <div class="flex flex-wrap items-center gap-2">
-                        <span class="font-bold text-slate-800 text-lg">${patient.department}</span>
-                        <span class="badge-${patient.priority} text-xs font-bold px-2 py-0.5 rounded-full">${patient.priority}</span>
-                        <span class="badge-${patient.status} text-xs font-bold px-2 py-0.5 rounded-full">${patient.status}</span>
+                <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <span class="font-bold text-slate-900 text-sm">${patient.department}</span>
+                        <span class="badge badge-${patient.priority}">${patient.priority}</span>
+                        <span class="badge badge-${patient.status}">${patient.status}</span>
                     </div>
-                    <p class="text-sm text-slate-600 mt-0.5 font-mono truncate">ABHA: ${patient.abha_id}</p>
-                    <p class="text-xs text-slate-400 mt-0.5">Token: <strong>${patient.token_id}</strong> · Arrived: ${time}</p>
+                    <p class="text-xs text-slate-500 mt-1 mono truncate">ABHA: ${patient.abha_id}</p>
+                    <p class="text-[11px] text-slate-400 mt-0.5">Token: <strong class="text-slate-600">${patient.token_id}</strong> &middot; ${time}</p>
                 </div>
             </div>
             <div class="shrink-0">
-                ${patient.status === 'Pending' 
-                    ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 py-2.5 rounded-xl transition-colors shadow-sm flex items-center space-x-2 pointer-events-none">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
-                        <span>View Analysis</span>
+                ${patient.status === 'Pending'
+                    ? `<button class="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs px-4 py-2 rounded-lg shadow-sm transition-colors pointer-events-none">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                        View Analysis
                       </button>`
-                    : `<div class="text-green-700 font-semibold text-sm flex items-center space-x-1">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                        <span>Approved by ${patient.approved_by || 'Doctor'}</span>
+                    : `<div class="flex items-center gap-1.5 text-emerald-700 font-semibold text-xs">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        Approved by ${patient.approved_by || 'Doctor'}
                       </div>`
                 }
             </div>
@@ -190,64 +226,89 @@ function renderQueue(queue) {
 
 function openModal(patient) {
     currentToken = patient.token_id;
-    document.getElementById('modal-meta').textContent = `Token ${patient.token_id} · ABHA ${patient.abha_id}`;
-    
+    document.getElementById('modal-meta').textContent = `Token ${patient.token_id}  ·  ABHA ${patient.abha_id}`;
+
+    // Routing strip
+    const pColor = { Emergency:'text-red-600', High:'text-orange-600', Medium:'text-amber-600', Low:'text-green-600' };
     document.getElementById('modal-routing').innerHTML = `
-        <div><span class="text-xs text-slate-500 uppercase font-bold tracking-wider">Department</span><p class="text-lg font-bold text-slate-800">${patient.department}</p></div>
-        <div><span class="text-xs text-slate-500 uppercase font-bold tracking-wider">Priority</span><p class="text-lg font-bold ${patient.priority === 'High' || patient.priority === 'Emergency' ? 'text-red-600' : 'text-orange-500'}">${patient.priority}</p></div>
-        <div><span class="text-xs text-slate-500 uppercase font-bold tracking-wider">Queue #</span><p class="text-lg font-bold text-slate-800">#${patient.queue_number}</p></div>
-        <div><span class="text-xs text-slate-500 uppercase font-bold tracking-wider">Status</span><p class="text-lg font-bold ${patient.status === 'Approved' ? 'text-green-600' : 'text-indigo-600'}">${patient.status}</p></div>
+        <div class="flex flex-col"><span class="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-0.5">Dept</span><span class="font-bold text-slate-800 text-sm">${patient.department}</span></div>
+        <div class="flex flex-col"><span class="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-0.5">Priority</span><span class="font-bold text-sm ${pColor[patient.priority] || 'text-slate-800'}">${patient.priority}</span></div>
+        <div class="flex flex-col"><span class="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-0.5">Queue #</span><span class="font-bold text-slate-800 text-sm">#${patient.queue_number}</span></div>
+        <div class="flex flex-col"><span class="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-0.5">Status</span><span class="font-bold text-sm ${patient.status === 'Approved' ? 'text-emerald-600' : 'text-indigo-600'}">${patient.status}</span></div>
     `;
-    
-    let html = `<div><h3 class="font-bold text-slate-700 mb-2">Quick Overview</h3><div class="text-slate-600">${marked.parse(patient.summary_markdown || '_No summary available._')}</div></div>`;
-    
-    // Add Structured SOAP Summary
+
+    // Quick overview
+    let html = `
+        <div class="mb-5">
+            <p class="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-2">AI Quick Overview</p>
+            <div class="prose-sm">${marked.parse(patient.summary_markdown || '_No summary available._')}</div>
+        </div>`;
+
+    // SOAP
     if (patient.soap) {
         const isAYUSH = (patient.department || '').toLowerCase().includes('ayush');
-        html += `<div class="mt-5 bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-            <div class="bg-slate-100 px-4 py-2 font-bold text-slate-700 border-b border-slate-200 text-sm tracking-wide uppercase flex items-center space-x-2">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
-                <span>Structured Clinical Summary</span>
+        const labels = isAYUSH
+            ? { S:'Prakriti + Vikriti', O:'Dashavidha Pariksha', A:'Dosha Assessment', P:'Vaidya Plan' }
+            : { S:'Subjective', O:'Objective', A:'Assessment', P:'Plan' };
+        const colors = { S:'bg-blue-600', O:'bg-violet-600', A:'bg-amber-500', P:'bg-emerald-600' };
+        html += `<div class="bg-white border border-slate-100 rounded-xl shadow-sm overflow-hidden mb-5">
+            <div class="bg-slate-50 px-4 py-2.5 border-b border-slate-100 flex items-center gap-2">
+                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+                <span class="font-bold text-slate-700 text-xs uppercase tracking-wide">Structured Clinical Note</span>
+                ${isAYUSH ? '<span class="ml-auto text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">🌿 AYUSH Mode</span>' : ''}
             </div>
-            <div class="p-4 space-y-4 text-sm leading-relaxed">
-                <div class="flex gap-3"><div class="w-6 font-black text-blue-600 shrink-0">S</div><div class="flex-1"><strong class="text-slate-500 text-xs uppercase block mb-0.5">${isAYUSH ? 'Prakriti + Vikriti' : 'Subjective'}</strong><span class="text-slate-800">${patient.soap.S || 'N/A'}</span></div></div>
-                <div class="flex gap-3"><div class="w-6 font-black text-purple-600 shrink-0">O</div><div class="flex-1"><strong class="text-slate-500 text-xs uppercase block mb-0.5">${isAYUSH ? 'Dashavidha Pariksha' : 'Objective'}</strong><span class="text-slate-800">${patient.soap.O || 'N/A'}</span></div></div>
-                <div class="flex gap-3"><div class="w-6 font-black text-amber-600 shrink-0">A</div><div class="flex-1"><strong class="text-slate-500 text-xs uppercase block mb-0.5">${isAYUSH ? 'Dosha Assessment' : 'Assessment'}</strong><span class="text-slate-800">${patient.soap.A || 'N/A'}</span></div></div>
-                <div class="flex gap-3"><div class="w-6 font-black text-green-600 shrink-0">P</div><div class="flex-1"><strong class="text-slate-500 text-xs uppercase block mb-0.5">${isAYUSH ? 'Vaidya Plan' : 'Plan'}</strong><span class="text-slate-800">${patient.soap.P || 'N/A'}</span></div></div>
-            </div>
-        </div>`;
-    }
-
-    // Append reports if any
-    if (patient.reports && patient.reports.length > 0) {
-        html += `<div class="mt-6 border-t border-slate-200 pt-5">
-            <h3 class="font-bold text-indigo-700 flex items-center space-x-2 mb-3">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                <span>Scanned Documents / Reports</span>
-            </h3>
-            <div class="space-y-3">`;
-        patient.reports.forEach((reportText, idx) => {
-            html += `<div class="bg-indigo-50 border border-indigo-100 rounded-lg p-4 text-sm text-slate-800 font-mono whitespace-pre-wrap"><strong class="text-indigo-800 block mb-1">Document ${idx + 1}</strong>${reportText}</div>`;
+            <div class="divide-y divide-slate-50">`;
+        ['S','O','A','P'].forEach(k => {
+            html += `<div class="px-4 py-4 flex gap-3">
+                <div class="w-7 h-7 rounded-lg ${colors[k]} text-white flex items-center justify-center font-black text-sm shrink-0">${k}</div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-1">${labels[k]}</p>
+                    <p class="text-slate-700 text-sm leading-relaxed">${patient.soap[k] || 'N/A'}</p>
+                </div>
+            </div>`;
         });
         html += `</div></div>`;
     }
-    
+
+    // Reports
+    if (patient.reports && patient.reports.length > 0) {
+        html += `<div class="border-t border-slate-100 pt-5 mb-4">
+            <p class="text-[10px] text-indigo-600 uppercase font-bold tracking-widest mb-3 flex items-center gap-1.5">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                Scanned Documents / OCR Reports
+            </p>
+            <div class="space-y-3">`;
+        patient.reports.forEach((r, i) => {
+            html += `<div class="bg-indigo-50 border border-indigo-100 rounded-xl p-4">
+                <p class="text-[10px] text-indigo-600 font-bold uppercase tracking-wider mb-2">Document ${i+1}</p>
+                <pre class="text-xs text-slate-700 mono whitespace-pre-wrap leading-relaxed">${r}</pre>
+            </div>`;
+        });
+        html += `</div></div>`;
+    }
+
     document.getElementById('modal-summary').innerHTML = html;
-    
+
+    // Actions
     const actions = document.getElementById('modal-actions');
     if (patient.status === 'Pending') {
         actions.innerHTML = `
-            <button onclick="approveFromModal()" class="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-xl transition-colors flex items-center justify-center space-x-2 shadow-md">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
-                <span>Approve Patient</span>
+            <button onclick="approveFromModal()" class="flex-1 flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition-colors shadow-sm text-sm">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+                Approve Patient
             </button>
-            <button onclick="closeModal()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 px-6 rounded-xl transition-colors">Close</button>
-        `;
+            <button onclick="closeModal()" class="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl transition-colors text-sm">Close</button>`;
     } else {
-        actions.innerHTML = `<p class="text-green-700 font-semibold">✅ Already approved by ${patient.approved_by}</p><button onclick="closeModal()" class="ml-auto bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 px-6 rounded-xl transition-colors">Close</button>`;
+        actions.innerHTML = `
+            <p class="flex items-center gap-2 text-emerald-700 font-semibold text-sm">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                Already approved by ${patient.approved_by}
+            </p>
+            <button onclick="closeModal()" class="ml-auto px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl transition-colors text-sm">Close</button>`;
     }
-    
+
     document.getElementById('detail-modal').classList.remove('hidden');
+    document.getElementById('modal-body').scrollTop = 0;
 }
 
 function closeModal() {
@@ -255,10 +316,13 @@ function closeModal() {
     currentToken = null;
 }
 
-async function quickApprove(tokenId) {
-    const doctorName = document.getElementById('doctor-name').value.trim() || 'Doctor';
-    await doApprove(tokenId, doctorName);
-}
+// Close modal on backdrop click
+document.getElementById('detail-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+});
+
+// Close modal on Escape key
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
 async function approveFromModal() {
     if (!currentToken) return;
