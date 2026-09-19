@@ -29,7 +29,7 @@ if api_key:
 
 # Configure Fallback (Groq or OpenAI)
 fallback_client = None
-fallback_model = "llama3-8b-8192" # Default Groq model
+fallback_model = "llama-3.1-8b-instant"  # Updated: llama3-8b-8192 was decommissioned
 if os.getenv("GROQ_API_KEY"):
     fallback_client = AsyncOpenAI(api_key=os.getenv("GROQ_API_KEY"), base_url="https://api.groq.com/openai/v1")
 elif os.getenv("OPENAI_API_KEY"):
