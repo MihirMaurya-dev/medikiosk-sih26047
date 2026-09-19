@@ -31,58 +31,33 @@ Indian government hospitals face a massive patient load, leading to four interco
 
 ## 2. What MediKiosk Does — End-to-End Flow
 
-```
-Patient arrives at hospital
-        │
-        ▼
-┌─────────────────────────────┐
-│  STEP 1: ABHA Authentication│  → Patient enters 14-digit ABHA ID
-│  (index.html)               │  → Past medical history auto-loaded from ABDM (simulated)
-└────────────┬────────────────┘
-             │
-             ▼
-┌─────────────────────────────┐
-│  STEP 2: AI Intake Chat     │  → ARIA (AI nurse) asks one question at a time
-│  (chat.html)                │  → SOCRATES framework for symptom collection
-│                             │  → Voice input (Web Speech API) in Hi/En/Ta/Bn
-│                             │  → TTS reads AI replies aloud
-│                             │  → Patient can upload reports/prescriptions (OCR)
-│                             │  → Emergency red-flag detection → instant alert
-└────────────┬────────────────┘
-             │
-             ▼
-┌─────────────────────────────┐
-│  STEP 3: AI Summary         │  → Groq LLM (primary) generates SOAP note JSON
-│  Generation                 │  → Gemini (fallback) if Groq fails
-│  (/api/generate_summary)    │  → Department routing + triage priority assigned
-│                             │  → Token created, saved to session + disk
-└────────────┬────────────────┘
-             │
-             ▼
-┌────────────────────────────────────────────────────────┐
-│  STEP 4: Dual-panel waiting                            │
-│  Patient → status.html  │  Doctor → doctor_panel.html  │
-│  Sees: token #, dept,   │  Sees: live queue, priority  │
-│  priority, live update  │  sorted, SOAP + OCR reports  │
-│  via Server-Sent Events │  forced to "View Analysis"   │
-│                         │  before approving            │
-└─────────────────────────┬──────────────────────────────┘
-                          │ Doctor clicks Approve
-                          ▼
-┌─────────────────────────────┐
-│  STEP 5: Patient Notified   │  → SSE pushes "Approved" in real-time
-│  (status.html)              │  → Green screen flash, large queue number
-│                             │  → Instructions: go to [Department] counter
-└─────────────────────────────┘
-             │
-             ▼
-┌─────────────────────────────┐
-│  STEP 6: Dashboard Review   │  → Doctor/staff reviews full SOAP note
-│  (dashboard.html)           │  → Can edit fields (contenteditable)
-│                             │  → Confidence flags highlight missing data
-│                             │  → "Push to ABDM" writes to patient's ABHA locker (mock FHIR)
-└─────────────────────────────┘
-```
+MediKiosk streamlines the entire OPD intake process through a structured 6-step journey:
+
+1. **Patient Authentication & Discovery (`index.html`)**
+   * The patient inputs their 14-digit ABHA (Ayushman Bharat Health Account) ID on the kiosk screen.
+   * The system authenticates the user and fetches their past medical history, existing conditions, and known allergies securely from the ABDM network.
+
+2. **AI-Driven Clinical Interview (`chat.html`)**
+   * The patient interacts with **ARIA**, the multilingual AI triage nurse, using natural voice or text (supported in Hindi, English, Tamil, and Bengali).
+   * ARIA systematically collects symptoms using the SOCRATES medical framework.
+   * Patients can hold up physical documents to the camera; the kiosk performs OCR to extract vital medical data.
+   * **Emergency Safety Net:** If red-flag symptoms are detected, ARIA instantly halts the interview and triggers an immediate triage alert.
+
+3. **Intelligent Triage & Summary Generation (Backend)**
+   * Once the patient finishes, the entire transcript and OCR data are processed by the Groq `llama-3.1-8b` model (with Gemini fallback).
+   * The AI generates a structured SOAP note, assigns a triage priority (Low/Medium/High/Emergency), and routes the patient to the correct specialist department.
+
+4. **Synchronized Waiting Experience (`status.html` & `doctor_panel.html`)**
+   * **Patient View:** The kiosk switches to a live status board showing their queue number and department.
+   * **Doctor View:** The physician's dashboard updates in real-time. Patients are sorted strictly by clinical priority, not chronologically.
+
+5. **Physician Review & Approval**
+   * Before the patient even enters the room, the doctor reviews the AI-generated SOAP note and differential diagnoses.
+   * The doctor clicks "Approve Patient" to call them in.
+
+6. **Patient Notification & EMR Push**
+   * Server-Sent Events (SSE) instantly flash a green "Approved" signal on the patient's screen, instructing them to proceed to the cabin.
+   * The final clinical note can be updated by the doctor and pushed back to the patient's ABHA locker.
 
 ---
 
@@ -160,161 +135,31 @@ graph TD
 
 ## 5. AI Pipeline — Detailed
 
+Our backend utilizes a multi-model fallback architecture to ensure 100% uptime and speed.
+
 ### 5.1 Chat Pipeline (`/api/chat`)
+* **Input:** Patient's ABHA ID, previous chat history, and the current message.
+* **Process:** The system builds a prompt containing the ARIA persona, past medical history, and user input. It calls Groq's `llama-3.1-8b` for ultra-fast inference. If rate-limited, it automatically falls back to `gemini-3.5-flash-lite`.
+* **Output:** Returns the AI's response text and an `is_emergency` boolean (triggered if the AI outputs `[EMERGENCY_FLAG]`).
 
-```
-Patient message
-      │
-      ▼
-Build message array:
-  [SYSTEM PROMPT from agent.md]
-+ [Past medical history injection]
-+ [Full chatHistory from frontend]
-+ [Current user message]
-      │
-      ▼
-Try Groq (llama-3.1-8b-instant)
-  → response.choices[0].message.content
-      │
-  Fails? ──► Try Gemini
-            → Build synthetic history format
-            → [{"role":"user","parts":[system+history]}, {"role":"model","parts":["Understood"]}, {"role":"user","parts":[current_msg]}]
-            → model.generate_content(messages)
-      │
-      ▼
-Check for [EMERGENCY_FLAG] in response
-  → If found: is_emergency=True returned to frontend
-  → Frontend: red pulsing button + full-screen siren overlay
-      │
-      ▼
-Return {doctor_response, is_emergency} to frontend
-```
+### 5.2 Document Vision Pipeline (`/api/scan_document`)
+* **Input:** Uploaded images or PDFs (max 10MB).
+* **Process:** The file is converted to base64 and sent to Gemini Vision. The model acts as a clinical document reader, extracting key lab values, current medications, and past diagnoses.
+* **Output:** The extracted text is returned to the frontend and injected invisibly into the chat history as a `[SYSTEM NOTE]`, ensuring the LLM considers this data for all subsequent questions.
 
-### 5.2 OCR Pipeline (`/api/scan_document`)
-
-```
-Patient uploads image/PDF
-      │
-      ▼
-Backend validation:
-  - File type whitelist: jpg, jpeg, png, webp, pdf
-  - Size limit: 10MB
-  - model not None check
-      │
-      ▼
-Read file bytes → base64 encode
-      │
-      ▼
-Gemini multimodal call:
-  prompt = "You are a clinical document reader..."
-  model.generate_content([prompt, {"mime_type": ..., "data": base64}])
-      │
-      ▼
-Return extracted_data (OCR text) to frontend
-      │
-      ▼
-Frontend:
-  - Displays OCR result as system message
-  - Injects into chatHistory as:
-    "[SYSTEM NOTE: The patient uploaded a medical document. Extracted details: {text}]"
-  - This context flows into ALL future AI responses + the final summary
-```
-
-### 5.3 Summary + Triage Pipeline (`/api/generate_summary`)
-
-```
-Patient clicks "Finish & Send to Doctor"
-      │
-      ▼
-Backend receives full chatHistory
-      │
-      ▼
-Transcript builder:
-  - Regular messages → "USER: ...\nASSISTANT: ..."
-  - OCR messages → "SYSTEM (DOCUMENT OCR): ..."
-  - Other SYSTEM NOTEs → filtered out
-  - report_analysis[] → extracted OCR texts for storage
-      │
-      ▼
-Validate: transcript not empty → else 400
-      │
-      ▼
-Inject transcript into SUMMARY_AGENT_PROMPT template
-  (from agent.md, {transcript} placeholder replaced)
-      │
-      ▼
-Try Groq (structured JSON request, temperature=0.2)
-  → Expects raw JSON back
-      │
-  Fails? ──► Try Gemini
-            → Same prompt, same JSON expectation
-      │
-      ▼
-JSON parsing:
-  - Strip markdown code fences (``` or ```json)
-  - json.loads()
-  - Except JSONDecodeError → fallback {summary_markdown: raw_text}
-      │
-      ▼
-Department validation:
-  - Against VALID_DEPTS whitelist
-  - Unknown dept → "General Medicine"
-      │
-      ▼
-Build token_data dict:
-  {token_id, abha_id, department, priority, queue_number,
-   summary_markdown, soap{S,O,A,P}, confidence_flags[], reports[],
-   status:"Pending", approved_by:null, timestamp}
-      │
-      ▼
-PATIENT_QUEUE[token_id] = token_data
-DEPT_COUNTERS[dept] += 1
-_save_session() → write to session_data.json
-      │
-      ▼
-Return token_data to patient (shown in modal)
-```
+### 5.3 Clinical Summary Pipeline (`/api/generate_summary`)
+* **Input:** The complete patient interview transcript.
+* **Process:** The transcript is validated and injected into a strict JSON-enforced prompt. The LLM extracts the subjective history, proposes objective next steps, generates differential diagnoses (Assessment), and formulates an investigation plan.
+* **Output:** A structured JSON object containing the SOAP note, assigned department, priority level, and confidence flags.
 
 ### 5.4 Doctor Approval Pipeline (`/api/approve`)
+* **Input:** The unique `token_id` and the doctor's name.
+* **Process:** The token's status in the central queue is updated from "Pending" to "Approved".
+* **Output:** Triggers an event on the SSE stream to notify the waiting patient instantly.
 
-```
-Doctor opens modal (forced to read SOAP + reports)
-      │
-      ▼
-Clicks "Approve Patient"
-      │
-      ▼
-POST /api/approve {token_id, doctor_name}
-      │
-      ▼
-token_data.status = "Approved"
-token_data.approved_by = doctor_name
-_save_session()
-      │
-      ▼
-SSE stream for patient's token_id returns:
-  data: {"status":"Approved", "approved_by":"Dr. Sharma", ...}
-      │
-      ▼
-Patient's status.html receives SSE event:
-  - Green full-screen flash
-  - "You're Approved!" card with queue number
-  - Instructions to go to department counter
-```
-
-### 5.5 Real-time SSE Stream (`/api/stream/{token_id}`)
-
-```python
-async def event_stream():
-    while True:
-        token = PATIENT_QUEUE.get(token_id)
-        if not token:
-            yield 'data: {"error": "Token not found"}\n\n'; return
-        yield f'data: {json.dumps(token)}\n\n'
-        if token["status"] == "Approved":
-            return  # close stream
-        await asyncio.sleep(1)  # poll every 1 second
-```
+### 5.5 Real-time Notification Stream (`/api/stream/{token_id}`)
+* **Architecture:** Uses Server-Sent Events (SSE) via FastAPI's `StreamingResponse`.
+* **Process:** Maintains an open HTTP connection with the kiosk. It polls the in-memory queue every second. Once the token status changes to "Approved", it pushes the update and cleanly closes the connection.
 
 ---
 
@@ -364,39 +209,29 @@ The entire AI behavior is controlled by a single `agent.md` file — editable wi
 
 ## 8. Data Model
 
-### `token_data` (in-memory + JSON)
-```json
-{
-  "token_id": "A1B2C3D4",
-  "abha_id": "12345678901234",
-  "department": "Cardiology",
-  "priority": "High",
-  "queue_number": 3,
-  "summary_markdown": "**55-year-old male** presenting with...",
-  "soap": {
-    "S": "Crushing chest pain radiating to left arm, onset 2 hours ago...",
-    "O": "No objective data from kiosk. Requires clinical examination.",
-    "A": "1. ACS — substernal pain + radiation + diaphoresis. 2. GERD — less likely.",
-    "P": "ECG, Troponin I, CXR PA view — urgent."
-  },
-  "confidence_flags": [
-    {"field": "Radiation", "confidence": "high", "value": "Left arm", "note": ""},
-    {"field": "Severity", "confidence": "medium", "value": "8/10", "note": "Patient seemed to underreport"}
-  ],
-  "reports": ["Report OCR text from uploaded prescription..."],
-  "status": "Pending",
-  "approved_by": null,
-  "timestamp": "2026-09-19T20:00:00"
-}
-```
+MediKiosk uses a highly structured schema to maintain state between the patient kiosk and the doctor's terminal. 
 
-### Session File (`session_data.json`)
-```json
-{
-  "queue": { "A1B2C3D4": { ...token_data... } },
-  "counters": { "Cardiology": 3, "General Medicine": 12 }
-}
-```
+### 8.1 Patient Token Schema (`token_data`)
+Every intake session generates a Token Object with the following fields:
+
+* **Identity & Routing:**
+  * `token_id`: Unique alphanumeric identifier (e.g., "A1B2C3D4").
+  * `abha_id`: The patient's 14-digit national health ID.
+  * `department`: The AI-assigned specialist department (e.g., "Cardiology").
+  * `queue_number`: The sequential token number for that specific department.
+* **Clinical Data:**
+  * `priority`: Triage urgency (`Low`, `Medium`, `High`, `Emergency`).
+  * `soap`: A nested object containing `S` (Subjective), `O` (Objective), `A` (Assessment), and `P` (Plan).
+  * `reports`: An array of text extracted from physical documents via OCR.
+* **Metadata & State:**
+  * `confidence_flags`: An array of AI self-evaluations highlighting missing or low-confidence data points (e.g., if the patient was vague about pain severity).
+  * `status`: Current state in the queue (`Pending` or `Approved`).
+  * `timestamp`: ISO-8601 creation time for chronological sorting.
+
+### 8.2 Database Architecture (`session_data.json`)
+For the hackathon scope, state is persisted in a lightweight JSON file (easily swappable to PostgreSQL/Redis). It contains two primary keys:
+1. `queue`: A dictionary mapping `token_id` to the full `token_data` object.
+2. `counters`: A dictionary tracking the next available queue number for each specific department.
 
 ---
 
@@ -487,27 +322,46 @@ medikiosk-sih26047/
 
 ---
 
-## 14. How to Run
+## 14. How to Run & Deploy
 
-```bash
-# 1. Clone
-git clone https://github.com/MihirMaurya-dev/medikiosk-sih26047.git
-cd medikiosk-sih26047/backend
+Follow these steps to spin up the MediKiosk platform locally.
 
-# 2. Install dependencies
-pip install -r requirements.txt
+### Prerequisites
+* Python 3.9 or higher
+* Valid API keys for Groq and Google Gemini
 
-# 3. Set API keys
-echo "GEMINI_API_KEY=your_key_here" > .env
-echo "GROQ_API_KEY=your_groq_key_here" >> .env
+### Step-by-Step Installation
 
-# 4. Run
-uvicorn main:app --host 127.0.0.1 --port 8000 --reload
+1. **Clone the Repository**
+   Download the source code to your local machine:
+   ```bash
+   git clone https://github.com/MihirMaurya-dev/medikiosk-sih26047.git
+   cd medikiosk-sih26047/backend
+   ```
 
-# 5. Open browser
-# Patient: http://127.0.0.1:8000
-# Doctor:  http://127.0.0.1:8000/doctor-panel
-```
+2. **Install Dependencies**
+   It is recommended to use a virtual environment. Install the required Python packages:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. **Configure Environment Variables**
+   Create a `.env` file in the `backend` directory and add your API keys. *Do not commit this file to version control.*
+   ```env
+   GEMINI_API_KEY=your_gemini_key_here
+   GROQ_API_KEY=your_groq_key_here
+   ```
+
+4. **Start the FastAPI Server**
+   Launch the backend server with Uvicorn (hot-reloading enabled):
+   ```bash
+   uvicorn main:app --host 127.0.0.1 --port 8000 --reload
+   ```
+
+5. **Access the Interfaces**
+   Open your web browser and navigate to:
+   * **Patient Kiosk (Start Here):** `http://127.0.0.1:8000/`
+   * **Doctor's Dashboard:** `http://127.0.0.1:8000/doctor-panel`
 
 ---
 
