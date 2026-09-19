@@ -133,7 +133,7 @@ graph TD
         Groq -.->|On Failure Fallback| Gemini((Gemini API<br>3.5-Flash-Lite))
         OCRE -->|Vision Task| Gemini
         
-        ChatE -->|Check Response| EFlag{Has [EMERGENCY_FLAG]?}
+        ChatE -->|Check Response| EFlag{"Has [EMERGENCY_FLAG]?"}
         EFlag -->|Yes| Siren[🚨 Instant UI Siren]
         EFlag -->|No| B
     end
