@@ -113,9 +113,44 @@ Patient arrives at hospital
 
 ---
 
-## 4. AI Pipeline — Detailed
+## 4. Data Flow Diagram
 
-### 4.1 Chat Pipeline (`/api/chat`)
+```mermaid
+graph TD
+    subgraph Patient Kiosk
+        A[Patient] -->|Speaks / Types| B(Web Speech API)
+        B -->|Transcribed Text| C[Chat Interface]
+        O[Physical Documents] -->|Camera Scan| P[OCR Module]
+    end
+
+    subgraph FastAPI Backend
+        C -->|POST /api/chat| D[Dialogue Manager]
+        P -->|POST /api/scan_document| V[Vision Processing]
+        D <-->|Text Inference| E((Groq / Llama-3))
+        V <-->|Multimodal OCR| F((Gemini 3.5 Flash))
+        E -.->|Rate Limit Fallback| F
+    end
+
+    subgraph LLM Routing Logic
+        E -->|Standard Case| G[SOCRATES Framework]
+        E -->|AYUSH Case| H[Dashavidha Pariksha]
+        E -->|Emergency| I[🚨 Red Flag Alert]
+    end
+
+    subgraph Doctor Terminal
+        G & H -->|Summarize| J[SOAP / Dashavidha Note]
+        F -->|Extract OCR| J
+        J -->|Store| K[(Queue Database)]
+        K -->|Server-Sent Events| L[Doctor Dashboard]
+        L -->|Approve & Push| M((ABDM / ABHA EMR))
+    end
+```
+
+---
+
+## 5. AI Pipeline — Detailed
+
+### 5.1 Chat Pipeline (`/api/chat`)
 
 ```
 Patient message
@@ -145,7 +180,7 @@ Check for [EMERGENCY_FLAG] in response
 Return {doctor_response, is_emergency} to frontend
 ```
 
-### 4.2 OCR Pipeline (`/api/scan_document`)
+### 5.2 OCR Pipeline (`/api/scan_document`)
 
 ```
 Patient uploads image/PDF
@@ -175,7 +210,7 @@ Frontend:
   - This context flows into ALL future AI responses + the final summary
 ```
 
-### 4.3 Summary + Triage Pipeline (`/api/generate_summary`)
+### 5.3 Summary + Triage Pipeline (`/api/generate_summary`)
 
 ```
 Patient clicks "Finish & Send to Doctor"
@@ -230,7 +265,7 @@ _save_session() → write to session_data.json
 Return token_data to patient (shown in modal)
 ```
 
-### 4.4 Doctor Approval Pipeline (`/api/approve`)
+### 5.4 Doctor Approval Pipeline (`/api/approve`)
 
 ```
 Doctor opens modal (forced to read SOAP + reports)
@@ -257,7 +292,7 @@ Patient's status.html receives SSE event:
   - Instructions to go to department counter
 ```
 
-### 4.5 Real-time SSE Stream (`/api/stream/{token_id}`)
+### 5.5 Real-time SSE Stream (`/api/stream/{token_id}`)
 
 ```python
 async def event_stream():
@@ -273,7 +308,7 @@ async def event_stream():
 
 ---
 
-## 5. Prompt Architecture (`agent.md`)
+## 6. Prompt Architecture (`agent.md`)
 
 The entire AI behavior is controlled by a single `agent.md` file — editable without touching Python code.
 
@@ -305,7 +340,7 @@ The entire AI behavior is controlled by a single `agent.md` file — editable wi
 
 ---
 
-## 6. Frontend Pages & Their Roles
+## 7. Frontend Pages & Their Roles
 
 | Page | File | Role |
 |---|---|---|
@@ -317,7 +352,7 @@ The entire AI behavior is controlled by a single `agent.md` file — editable wi
 
 ---
 
-## 7. Data Model
+## 8. Data Model
 
 ### `token_data` (in-memory + JSON)
 ```json
@@ -355,7 +390,7 @@ The entire AI behavior is controlled by a single `agent.md` file — editable wi
 
 ---
 
-## 8. Security & Reliability Choices
+## 9. Security & Reliability Choices
 
 | Concern | Approach |
 |---|---|
@@ -370,7 +405,7 @@ The entire AI behavior is controlled by a single `agent.md` file — editable wi
 
 ---
 
-## 9. AYUSH Integration
+## 10. AYUSH Integration
 
 MediKiosk has first-class support for Ayurvedic/AYUSH consultations:
 
@@ -383,7 +418,7 @@ MediKiosk has first-class support for Ayurvedic/AYUSH consultations:
 
 ---
 
-## 10. Multi-language Support
+## 11. Multi-language Support
 
 | Language | Voice Input | TTS Output | AI Response | Trigger |
 |---|---|---|---|---|
@@ -396,7 +431,7 @@ Language switching injects a `[SYSTEM NOTE]` into `chatHistory` — the AI is in
 
 ---
 
-## 11. Limitations & Future Roadmap
+## 12. Limitations & Future Roadmap
 
 ### Current Limitations (Hackathon Scope)
 | Limitation | Reason |
@@ -418,7 +453,7 @@ Language switching injects a `[SYSTEM NOTE]` into `chatHistory` — the AI is in
 
 ---
 
-## 12. Repository Structure
+## 13. Repository Structure
 
 ```
 medikiosk-sih26047/
@@ -442,7 +477,7 @@ medikiosk-sih26047/
 
 ---
 
-## 13. How to Run
+## 14. How to Run
 
 ```bash
 # 1. Clone
@@ -466,7 +501,7 @@ uvicorn main:app --host 127.0.0.1 --port 8000 --reload
 
 ---
 
-## 14. Key Differentiators vs Existing Solutions
+## 15. Key Differentiators vs Existing Solutions
 
 | Feature | MediKiosk | Traditional OPD System |
 |---|---|---|
