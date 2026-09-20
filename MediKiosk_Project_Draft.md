@@ -41,7 +41,7 @@ MediKiosk streamlines the entire OPD intake process through a structured 6-step 
    * The patient interacts with **ARIA**, the multilingual AI triage nurse, using natural voice or text (supported in Hindi, English, Tamil, and Bengali).
    * ARIA systematically collects symptoms using the SOCRATES medical framework.
    * Patients can hold up physical documents to the camera; the kiosk performs OCR to extract vital medical data.
-   * **Emergency Safety Net:** If red-flag symptoms are detected, ARIA instantly halts the interview and triggers an immediate triage alert.
+   * **Emergency Safety Net:** A dual-check system (LLM tagging + deterministic regex keyword rules for chest pain, unconsciousness, severe bleeding) evaluates every response. If an emergency is detected, it triggers a UI alarm, automatically writes a critical-priority ticket to the queue database, and pushes a real-time alert to the doctor\'s panel.
 
 3. **Intelligent Triage & Summary Generation (Backend)**
    * Once the patient finishes, the entire transcript and OCR data are processed by the Groq `llama-3.1-8b` model (with Gemini fallback).
@@ -92,43 +92,85 @@ MediKiosk streamlines the entire OPD intake process through a structured 6-step 
 
 ```mermaid
 graph TD
-    %% Patient Kiosk Interactions
-    subgraph Kiosk UI
-        A[index.html<br>ABHA Auth] -->|Start Session| B[chat.html<br>Conversational Interface]
-        B -->|Speech-to-Text| STT(Web Speech API)
-        B -->|Upload Doc| Cam(File/Camera Scan)
+    classDef frontend fill:#e0f2fe,stroke:#0284c7,stroke-width:2px;
+    classDef api fill:#f0fdf4,stroke:#16a34a,stroke-width:2px;
+    classDef external fill:#fdf4ff,stroke:#c026d3,stroke-width:2px;
+    classDef storage fill:#fffbeb,stroke:#d97706,stroke-width:2px;
+    classDef emergency fill:#fef2f2,stroke:#dc2626,stroke-width:3px,color:#dc2626;
+    classDef legend fill:#f8fafc,stroke:#94a3b8,stroke-width:1px,stroke-dasharray: 5 5;
+
+    %% 1. Frontend Layer
+    subgraph Frontend [1. Client Interfaces]
+        A[1. index.html<br>Patient ABHA Auth]:::frontend
+        B[2. chat.html<br>Voice/Text UI]:::frontend
+        Doc[6. doctor_panel.html<br>Doctor Login & Queue]:::frontend
+        SSEUI[status.html<br>Live Patient Screen]:::frontend
+        Man[Nurse Desk<br>Manual Fallback]:::frontend
     end
 
-    %% Backend Services
-    subgraph FastAPI Backend
-        STT -->|POST /api/chat| ChatE[Chat Endpoint]
-        Cam -->|POST /api/scan_document| OCRE[OCR Endpoint]
-        
-        ChatE -->|Inference| Groq((Groq API<br>Llama-3.1-8b))
-        Groq -.->|On Failure Fallback| Gemini((Gemini API<br>3.5-Flash-Lite))
-        OCRE -->|Vision Task| Gemini
-        
-        ChatE -->|Check Response| EFlag{"Has [EMERGENCY_FLAG]?"}
-        EFlag -->|Yes| Siren[🚨 Instant UI Siren]
-        EFlag -->|No| B
+    %% 2. API Layer
+    subgraph API [2. FastAPI Backend]
+        AuthE[Auth Endpoint]:::api
+        ChatE[3. /api/chat Endpoint]:::api
+        OCRE[/api/scan_document]:::api
+        SumE[4. /api/generate_summary]:::api
+        AppE[7. /api/approve]:::api
+        PubSub[[Redis Pub/Sub<br>Event Broadcaster]]:::api
+        EFlag{"Rules and LLM Emergency Check"}:::emergency
+        Alert[Push Critical Ticket]:::emergency
     end
 
-    %% Summary & Triage Generation
-    subgraph Triage Engine
-        B -->|Finish & Send| SumE[POST /api/generate_summary]
-        SumE -->|Transcript + OCR Context| Groq
-        SumE -.->|On Failure Fallback| Gemini
-        SumE -->|Parse Result| Struct[Extract SOAP JSON, Assign Dept & Priority]
-        Struct -->|Save Token| DB[(session_data.json)]
+    %% 3. External Services
+    subgraph External [3. External APIs]
+        ABDM[(ABDM Network)]:::external
+        Groq((Groq API<br>Llama-3.1)):::external
+        Gemini((Gemini API<br>Flash-Lite)):::external
     end
 
-    %% Synchronized Status & Doctor Approval
-    subgraph Waiting & Approval
-        DB -->|Server-Sent Events| SSE[status.html<br>Live Patient Status]
-        DB -->|GET /api/queue| Doc[doctor_panel.html<br>Doctor Queue]
-        Doc -->|Review & Approve| App[POST /api/approve]
-        App -->|Update Record| DB
+    %% 4. Storage Layer
+    subgraph Storage [4. Data Persistence]
+        DB[(PostgreSQL / SQLite)]:::storage
     end
+
+    %% Legend
+    subgraph Legend
+        L1[Solid: Main Flow]:::legend
+        L2-.->|Dotted: Fallback|L3[...]:::legend
+        L4==>|Thick: Emergency|L5[...]:::legend
+    end
+
+    %% Flow Definitions
+    A -->|Auth Request| AuthE
+    AuthE -->|Verify| ABDM
+    AuthE -->|Start Session| B
+    
+    B -->|Upload Doc| OCRE
+    OCRE -->|Vision Task| Gemini
+    Gemini -->|Extracted Text Context| B
+    
+    B -->|Voice/Text| ChatE
+    ChatE -->|Inference| Groq
+    Groq -->|Response| EFlag
+    EFlag ==>|Regex/LLM Flag Found| Alert
+    Alert ==>|Critical Priority| DB
+    Alert ==>|Alarm SSE| PubSub
+    EFlag -->|No Flag| B
+    
+    B -->|Finish & Send| SumE
+    SumE -->|Chat + OCR Context| Groq
+    SumE -->|Parse JSON| DB
+    
+    DB -->|Read Queue| Doc
+    Doc -->|Review & Approve| AppE
+    AppE -->|Update DB| DB
+    AppE -->|Publish Event| PubSub
+    PubSub -->|SSE Stream| SSEUI
+    PubSub ==>|Urgent SSE| Doc
+    
+    %% Fallback Chain
+    Groq -.->|Fallback 1 (Rate Limit)| Gemini
+    Gemini -.->|Fallback 2 (All Failed)| Man
+    OCRE -.->|OCR Failed| Man
 ```
 
 ---
@@ -139,7 +181,7 @@ Our backend utilizes a multi-model fallback architecture to ensure 100% uptime a
 
 ### 5.1 Chat Pipeline (`/api/chat`)
 * **Input:** Patient's ABHA ID, previous chat history, and the current message.
-* **Process:** The system builds a prompt containing the ARIA persona, past medical history, and user input. It calls Groq's `llama-3.1-8b` for ultra-fast inference. If rate-limited, it automatically falls back to `gemini-3.5-flash-lite`.
+* **Process:** The system builds a prompt containing the ARIA persona, past medical history, and user input. It calls Groq's `llama-3.1-8b` for ultra-fast inference. If rate-limited or unavailable, it automatically falls back to `gemini-3.5-flash-lite`. If both AI providers completely fail (or if OCR fails), the system initiates a final fallback routing the patient to the manual entry Nurse Desk to guarantee zero service interruption.
 * **Output:** Returns the AI's response text and an `is_emergency` boolean (triggered if the AI outputs `[EMERGENCY_FLAG]`).
 
 ### 5.2 Document Vision Pipeline (`/api/scan_document`)
@@ -228,8 +270,11 @@ Every intake session generates a Token Object with the following fields:
   * `status`: Current state in the queue (`Pending` or `Approved`).
   * `timestamp`: ISO-8601 creation time for chronological sorting.
 
-### 8.2 Database Architecture (`session_data.json`)
-For the hackathon scope, state is persisted in a lightweight JSON file (easily swappable to PostgreSQL/Redis). It contains two primary keys:
+### 8.2 Database & Real-Time Architecture
+
+The architecture relies on robust data and event layers:
+1. **Persistent Storage (PostgreSQL/SQLite):** Replaces file-based JSON storage to eliminate race conditions with concurrent kiosks and ensure secure handling of sensitive health data.
+2. **Event Broadcaster (Redis Pub/Sub):** Instead of direct file polling, real-time Server-Sent Events (SSE) are driven by an in-memory Redis event broker, instantly pushing queue changes to `status.html` and urgent alarms to `doctor_panel.html`. It contains two primary keys:
 1. `queue`: A dictionary mapping `token_id` to the full `token_data` object.
 2. `counters`: A dictionary tracking the next available queue number for each specific department.
 
