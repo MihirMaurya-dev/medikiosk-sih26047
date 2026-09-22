@@ -832,47 +832,91 @@
             fileInput.value = '';
         });
 
-        // Web Speech API Integration
+        // ── Web Speech API — Mic Button ──────────────────────────────
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (SpeechRecognition) {
             const recognition = new SpeechRecognition();
-            recognition.interimResults = false;
+            recognition.continuous     = false;  // stop after one utterance
+            recognition.interimResults = true;   // show live partial transcript in input box
+            recognition.maxAlternatives = 1;
+            let isListening = false;
+
+            // Update lang whenever voiceLang changes (language panel)
+            function syncRecognitionLang() { recognition.lang = voiceLang || 'hi-IN'; }
+            syncRecognitionLang();
 
             recognition.onstart = function() {
-                voiceBtn.classList.remove('bg-red-500');
+                isListening = true;
+                syncRecognitionLang();
+                voiceBtn.classList.remove('bg-orange-500','bg-red-500');
                 voiceBtn.classList.add('bg-green-500', 'animate-pulse');
-                userInput.placeholder = "Listening...";
+                voiceBtn.title = 'Listening… click to stop';
+                userInput.placeholder = voiceLang === 'hi-IN' ? 'Sun raha hoon...' :
+                                        voiceLang === 'ta-IN' ? 'Ketkiren...' :
+                                        voiceLang === 'bn-IN' ? 'Shunchhi...' : 'Listening...';
             };
 
+            // Show interim transcript live inside the input box
             recognition.onresult = function(event) {
-                const transcript = event.results[0][0].transcript;
-                userInput.value = transcript;
-                sendMessage(); // Auto send when they finish speaking
+                let interim = '';
+                let final   = '';
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    if (event.results[i].isFinal) {
+                        final += event.results[i][0].transcript;
+                    } else {
+                        interim += event.results[i][0].transcript;
+                    }
+                }
+                // Show what we heard so far (interim shown lightly, final triggers send)
+                userInput.value = final || interim;
+                if (final.trim()) {
+                    sendMessage();   // auto-send when speech finalised
+                }
             };
 
             recognition.onerror = function(event) {
-                console.error("Speech error:", event.error);
-                userInput.placeholder = "Error listening. Type your symptoms here...";
-                voiceBtn.classList.add('bg-red-500');
-                voiceBtn.classList.remove('bg-green-500', 'animate-pulse');
+                console.error('Speech error:', event.error);
+                isListening = false;
+                voiceBtn.classList.remove('bg-green-500','animate-pulse','bg-red-500');
+                voiceBtn.classList.add('bg-orange-500');
+                voiceBtn.title = 'Mic (click to speak)';
+                if (event.error === 'not-allowed') {
+                    userInput.placeholder = 'Mic access denied — allow in browser settings';
+                } else if (event.error === 'no-speech') {
+                    userInput.placeholder = 'No speech detected. Try again.';
+                } else {
+                    userInput.placeholder = 'Speech error. Type your symptoms here...';
+                }
             };
 
             recognition.onend = function() {
-                voiceBtn.classList.add('bg-red-500');
-                voiceBtn.classList.remove('bg-green-500', 'animate-pulse');
-                userInput.placeholder = "Type your symptoms here...";
+                isListening = false;
+                voiceBtn.classList.remove('bg-green-500','animate-pulse','bg-red-500');
+                voiceBtn.classList.add('bg-orange-500');
+                voiceBtn.title = 'Mic (click to speak)';
+                userInput.placeholder = 'Type your symptoms here...';
             };
 
+            // Toggle: click to start, click again to stop
             voiceBtn.addEventListener('click', () => {
-                recognition.lang = voiceLang;
-                userInput.placeholder = voiceLang === 'hi-IN' ? 'Sun raha hoon...' : 'Listening...';
-                recognition.start();
+                if (isListening) {
+                    recognition.stop();
+                } else {
+                    syncRecognitionLang();
+                    try {
+                        recognition.start();
+                    } catch(e) {
+                        console.warn('Recognition already started:', e);
+                    }
+                }
             });
 
         } else {
+            // Browser doesn't support it — show alert
             voiceBtn.addEventListener('click', () => {
-                alert("Your browser does not support the Web Speech API. Please use Google Chrome or Edge.");
+                alert('Voice input is not supported in this browser.\nPlease use Google Chrome or Microsoft Edge.');
             });
+
         }
         
         document.getElementById('finish-btn').addEventListener('click', async () => {
